@@ -94,13 +94,20 @@ La règle Météorage actuelle consiste à lever toute alerte orage 30 minutes a
 
 \medskip
 
-\textbf{Validation sur eval 2023-25 avec critère opérationnel CG / 3 km :}
+\textbf{Validation sur eval 2023-25 — simulation opérationnelle réelle :}
 \begin{itemize}[leftmargin=*,topsep=2pt]
-    \item Modèle testé sur \textbf{973 alertes} (17\,037 CG analysables, 385 CG $<3$ km dangereux).
-    \item Modèle opérationnel : à chaque CG en zone 20 km, prédiction $T_q(X)$ minutes; si aucun nouveau CG pendant $T_q$, levée; sinon reset au nouveau CG.
-    \item Incident = le prochain CG arrive après $T_q$ \textbf{et} il est à $<3$ km de l'aéroport.
-    \item À $q=0.95$ : \textbf{37 incidents} / 385 CG dangereux $=$ risque réel \textbf{9.61\%}, gain médian par CG \textbf{27 min} (somme cumulée $\approx$ 6\,000 heures).
-    \item Baseline 30 min : 4 incidents / 385 $=$ \textbf{1.04\%}. Compromis assumé : agressivité du modèle contre gain considérable.
+    \item Modèle testé sur \textbf{973 alertes inédites} (17\,037 CG analysables, 385 CG $<3$ km
+    dangereux).
+    \item Mécanique opérationnelle : à chaque CG, le timer démarre à
+    $\max(T_q, T_{\min})$ ; si nouveau CG avant expiration → reset ; sinon → lever.
+    Le plancher $T_{\min}$ est le levier opérationnel.
+    \item \textbf{Point d'opération recommandé} ($q = 0{,}95$, $T_{\min} = 25$ min) :
+    \textbf{251 heures gagnées} (15,4 min en moyenne par alerte), risque CG \textbf{17 \%}
+    (66 CG manqués / 385).
+    \item Compromis $T_{\min}$ : agressif (20) = 365 h / 28 \% ; prudent (30) = 136 h / 8,6 \% ;
+    baseline 30 min stricte = 0 h / 0 \% (référence).
+    \item Profil par aéroport (à $T_{\min}=25$) : Pise 83 h / 26 \%, Bastia 62 h / 7,4 \%
+    (meilleur ratio), Biarritz 46 h / 13 \%, Ajaccio 37 h / 16 \%, Nantes 24 h / 27 \%.
 \end{itemize}
 \end{tcolorbox}
 
@@ -637,248 +644,160 @@ Cela suggère que la règle des 30 min n'est pas un choix arbitraire mais a ét�
 \end{enumerate}
 
 % ===============================================================
-\section{Validation sur eval 2023-25 avec critère opérationnel CG / 3 km}
-\label{sec:eval3km}
+\section{Validation sur eval 2023-25 — simulation opérationnelle réelle}
+\label{sec:eval_ops}
 
-\subsection{Pourquoi un nouveau critère}
+\subsection{Le critère opérationnel CG / 3 km}
 
-La cible des sections précédentes était \og aucun nouveau CG dans la zone d'alerte\fg{} (rayon 20 km).
-Mais le \textbf{vrai risque opérationnel} pour un aéroport (personnel au sol, ravitaillement,
-chargement) se joue à \textbf{quelques kilomètres} de l'aéroport.
-Le protocole officiel du Data Battle (\texttt{Evaluation\_databattle\_meteorage.ipynb})
-mesure le risque sur la zone 3 km.
+Les sections précédentes mesuraient le risque sur la zone d'alerte 20 km. Le risque
+\emph{opérationnel} réel pour un aéroport (personnel sol, ravitaillement, chargement) se
+joue à moins de \textbf{3 km}. Le protocole officiel du Data Battle
+(\texttt{Evaluation\_databattle\_meteorage.ipynb}) impose donc :
 
-\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Définition retenue}]
-\textbf{Incident} = un \textbf{CG} (nuage-sol) à $<3$ km de l'aéroport tombant \emph{après}
-la levée prédite par le modèle, alors qu'il aurait été couvert par la baseline 30 min de Météorage.
-
-Les éclairs IC (intra-nuage) ne comptent pas — ils ne touchent pas le sol et ne ferment pas l'alerte.
+\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Définition de l'incident}]
+\textbf{Incident} = un \textbf{CG} (nuage-sol) à $<3$ km de l'aéroport arrivant \emph{après}
+la fin d'alerte prédite par notre modèle. Les IC (intra-nuage) ne comptent pas — ils ne
+touchent pas le sol et ne sont pas dangereux pour les opérations sol.
 \end{tcolorbox}
 
-Le modèle reste celui des sections précédentes (Weibull AFT, calibration robuste). Seul le
-\textbf{critère d'évaluation} change.
+\subsection{La simulation opérationnelle réelle}
 
-\subsection{Le modèle en mode opérationnel}
+\textbf{Important.} En production, on ne sait \emph{jamais} en temps réel quel CG sera le
+dernier d'un orage. La seule chose qu'on fait, c'est démarrer un timer après chaque CG :
+si un nouveau CG arrive avant l'expiration → reset ; si le timer expire sans nouveau CG →
+on lève. C'est exactement la mécanique Météorage 30 min, mais avec $T_q$ adapté au contexte.
 
-\paragraph{Règle d'usage.} À chaque CG observé en zone 20 km, le modèle Weibull AFT prédit un
-temps d'attente $T_q(X)$ minutes. La règle effective est :
-\begin{enumerate}[leftmargin=*]
-    \item Si aucun nouveau CG n'arrive pendant $T_q$ minutes, on lève l'alerte.
-    \item Si un nouveau CG arrive avant $T_q$, le compteur est remis à zéro.
+\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Mécanique pas à pas}]
+Pour chaque alerte de l'eval, on simule CG par CG :
+\begin{enumerate}[topsep=2pt]
+    \item À chaque CG observé, le modèle prédit $T_q(X)$ minutes (calibré, capé à 30 min).
+    \item Le \textbf{timer effectif} = $\max(T_q, T_{\min})$ où $T_{\min}$ est un
+    \textbf{plancher opérationnel} (l'opérateur ne fait pas confiance aveuglément au modèle).
+    \item Si un nouveau CG arrive avant l'expiration → \textbf{RESET} au nouveau CG.
+    \item Si le timer expire sans nouveau CG → \textbf{LEVÉE} de l'alerte.
 \end{enumerate}
-C'est exactement la règle Météorage actuelle (30 min fixe), mais avec $T_q$ adapté au contexte
-(rythme, distance, intensité, saison).
-
-\paragraph{Comptage du risque.} Pour deux CG consécutifs $i$ et $i+1$ dans la même alerte,
-soit $\Delta_i$ l'écart temporel. Un incident est compté si :
-\[
-\Delta_i > T_q(X_i) \quad \text{ET} \quad \text{dist}(CG_{i+1}) < 3~\text{km}
-\]
-\emph{Lecture :} le modèle a annoncé qu'on pouvait lever à $T_q$ min, mais en réalité le prochain
-CG arrive après $T_q$ — donc on aurait levé trop tôt — et ce CG est dangereux (\textless\,3 km).
-
-\paragraph{Risque.} Risque réel = nombre d'incidents / nombre total de CG $<3$ km dans l'eval.
-
-\subsection{Résultats sur eval 2023-25}
-
-\textbf{Données :} 973 alertes, \textbf{17\,037 CG analysables} (= ayant un suivant observable),
-\textbf{385 CG $<3$ km} dans l'eval.
-
-\begin{table}[H]
-\centering
-\begin{tabular}{lcccc}
-\toprule
-\textbf{$q$} & \textbf{Cible $1-q$} & \textbf{Levées avant prochain CG} & \textbf{Incidents} & \textbf{Risque réel} \\
-\midrule
-0.90 & 10\% & 2\,052 & 54 & 14,03\% \\
-0.95 & 5\%  & 1\,151 & 37 &  9,61\% \\
-0.99 & 1\%  &   590  & 15 &  3,90\% \\
-\midrule
-\multicolumn{2}{l}{Baseline 30 min Météorage} & --- & 4 & \textbf{1,04\%} \\
-\bottomrule
-\end{tabular}
-\caption{Risque opérationnel CG / 3 km du modèle Weibull AFT sur eval, comparé à la baseline 30 min.}
-\label{tab:eval3km}
-\end{table}
-
-\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Lecture}]
-Le modèle est \textbf{plus agressif} que la baseline 30 min : il prédit des temps $T_q$ courts
-(médiane 3-7 min selon $q$), ce qui maximise le gain mais introduit aussi des incidents.
-
-À $q=0.99$ (le plus conservateur), le risque réel est de 3,90\% — \textbf{environ 4 fois la
-baseline}. C'est le prix à payer pour exploiter le contexte par éclair.
+On compte ensuite les CG <3 km arrivant après notre levée (incidents) et le temps gagné
+par rapport à la baseline Météorage (= dernier CG + 30 min).
 \end{tcolorbox}
 
-\subsection{Risque empirique non-paramétrique}
-
-Mesure complémentaire sans modèle, dans l'esprit de la section \ref{sec:donnees} :
-pour un seuil $T$ \textbf{fixe} (= règle \og lever $T$ min après chaque CG\fg{}), combien
-de CG dangereux seraient ratés ?
-\[
-\widehat{R}(T) = \frac{|\{i : \Delta_i > T \text{ ET dist}(CG_{i+1}) < 3\}|}{N_{\text{CG}<3\text{km}}}
-\]
-
-\begin{table}[H]
-\centering
-\begin{tabular}{lcc}
-\toprule
-\textbf{$\alpha$ visé} & \textbf{$T^*(\alpha)$} & \textbf{Gain vs 30 min} \\
-\midrule
-10\% & 5 min  & +25 min \\
-5\%  & 9 min  & +21 min \\
-1\%  & $>30$ min & non atteignable \\
-\bottomrule
-\end{tabular}
-\caption{Plus petit seuil $T$ qui garantit un risque empirique CG / 3 km $\leq \alpha$.}
-\end{table}
-
-\subsection{Exemples concrets d'incidents ($q=0.95$)}
-
-Les 37 incidents détectés à $q=0.95$ sont des cas où le modèle a sous-estimé l'écart jusqu'au
-prochain CG dangereux. Quelques exemples (parmi les plus parlants) :
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{llrrrr}
-\toprule
-\textbf{Aéroport} & \textbf{Alerte} & \textbf{$T_q$ prédit} & \textbf{$\Delta_i$ réel} & \textbf{Écart} & \textbf{dist prochain CG} \\
-\midrule
-Pise     & Pise\_1319     & 2,75 min  & 35,78 min & +33,03 min & 1,87 km \\
-Bastia   & Bastia\_810    & 12,93 min & 45,87 min & +32,93 min & 2,43 km \\
-Ajaccio  & Ajaccio\_905   & 7,56 min  & 37,23 min & +29,67 min & 1,44 km \\
-Bastia   & Bastia\_903    & 13,46 min & 31,20 min & +17,74 min & 0,65 km \\
-Biarritz & Biarritz\_776  & 1,97 min  & 9,28 min  & +7,32 min  & 2,45 km \\
-\bottomrule
-\end{tabular}
-\caption{Exemples d'incidents à $q=0.95$. Lecture : sur \texttt{Pise\_1319}, le modèle prédisait
-qu'aucun CG n'arriverait avant 2,75 min, mais en réalité le suivant arrive 33 min plus tard,
-à 1,87 km de l'aéroport. Si on avait levé à 2,75 min, on aurait été en opérations sol 33 min
-avant qu'un CG dangereux frappe.}
-\end{table}
-
-Ces 37 incidents sont visualisables un par un dans la démo Streamlit (\texttt{app.py}) :
-timeline complète de l'alerte, ligne verte = levée prédite, ligne rouge = arrivée du prochain
-CG, étoile rouge = CG dangereux, bande rose = fenêtre \og off-alerte\fg{}.
-
-\subsection{Recommandation opérationnelle}
-
-\begin{tcolorbox}[colback=green!5,colframe=green!60!black]
-\textbf{Compromis} : à $q=0.95$, le modèle gagne en moyenne plusieurs minutes d'opérations sol
-par alerte, au prix d'un risque réel d'environ \textbf{10\%} de CG dangereux ratés.
-
-Pour respecter la cible 5\% du protocole officiel, il faudrait calibrer $q$ encore plus haut
-(ex.\ $q=0.99$, risque 3,9\%) ou ajouter un \textbf{cap dur} à 30 min sur $T_q$ pour ne jamais
-descendre sous la baseline Météorage en cas de doute.
-\end{tcolorbox}
-
-\subsection{Évaluation selon le protocole officiel : sweep sur $\theta$}
-\label{sec:sweep_theta}
-
-Pour s'aligner exactement sur la procédure d'évaluation prévue par le jury du Data Battle
-(\texttt{Evaluation\_databattle\_meteorage.ipynb}), nous reproduisons sa boucle en trois parties
-dans le notebook \texttt{Evaluation\_databattle\_weibull.ipynb} :
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Part 1 — génération.} Pour chaque CG de l'eval, on émet une prédiction au format
-    officiel \texttt{predictions.csv} avec :
-    \[
-    \hat t^a_i \;=\; \text{date}(CG_i) + T_{0.95}^{\text{calibré}}(X_i), \qquad
-    s^a_i \;=\; S_{\text{Weibull}}(30 \mid X_i)
-    \]
-    La \texttt{confidence} $s^a_i$ est la probabilité prédite par le modèle qu'aucun CG ne suive
-    dans les 30 minutes (donc que ce CG soit le dernier de l'alerte). C'est une quantité
-    \emph{monotone en position dans l'alerte} : faible au début (un autre CG est attendu), élevée
-    à la fin.
-    \item \textbf{Part 2 — sweep.} Pour chaque $\theta \in \{0, 0{,}05, \dots, 0{,}95\}$, on garde
-    les prédictions avec $s \geq \theta$, on prend la plus précoce par alerte, et on calcule
-    le couple (gain, risque).
-    \item \textbf{Part 3 — sélection.} On choisit le $\theta$ qui maximise le gain sous
-    $R < R_{\text{accept}} = 2\%$.
-\end{enumerate}
-
-\paragraph{Résultats — deux mesures complémentaires.}
-
-Le notebook officiel propose une procédure d'évaluation avec sweep sur $\theta$. Nous présentons
-deux lectures complémentaires, toutes deux avec la restriction \textbf{CG <3 km}
-(les IC ne sont pas dangereux au sol). Le baseline Météorage 30 min sert de référence.
-
-\textbf{Mesure 1 — Section 8 : 1 décision par alerte au dernier CG} (toutes les 1\,352 alertes
-évaluées) :
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{ccccc}
-\toprule
-\textbf{$q$} & \textbf{$T_q$ médian} & \textbf{CG <3 km manqués} & \textbf{Risque CG} & \textbf{Gain cumulé} \\
-\midrule
-0,85 &  4,5 min & 0 / 385 & 0 \% & \textbf{388 h} \\
-0,95 &  9,4 min & 0 / 385 & 0 \% & \textbf{330 h} \\
-0,97 & 11,8 min & 0 / 385 & 0 \% & 309 h \\
-0,99 & 17,4 min & 0 / 385 & 0 \% & 269 h \\
-\midrule
-Baseline 30 min & — & 0 / 385 & 0 \% & 0 h \\
-\bottomrule
-\end{tabular}
-\caption{Mesure principale : code identique à Evaluation\_databattle\_meteorage.ipynb avec
-1 prédiction par alerte au dernier CG observé. \textbf{Risque CG = 0 \% par construction d'une
-alerte Météorage} (aucun CG n'arrive plus de 30 min après le dernier, sinon une nouvelle alerte
-démarre).}
-\label{tab:section8}
-\end{table}
-
-\textbf{Mesure 2 — Sweep $\theta$ strict} : une prédiction à chaque CG ($T_q$ fixé à $q=0{,}95$),
-filtrage par confidence $\geq \theta$, sélection de la plus précoce par alerte :
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{ccccc}
-\toprule
-\textbf{$\theta$} & \textbf{Alertes filtrées} & \textbf{CG <3 km manqués} & \textbf{Risque CG} & \textbf{Gain cumulé} \\
-\midrule
-0,70 & 206 / 1\,352 & 55 / 385 & 14,29 \% & 163 h \\
-0,85 & 140 / 1\,352 & 29 / 385 &  7,53 \% & 118 h \\
-0,90 & 108 / 1\,352 & 27 / 385 &  7,01 \% &  90 h \\
-0,95 &  68 / 1\,352 & 21 / 385 &  5,45 \% &  60 h \\
-\textbf{0,99} & \textbf{26 / 1\,352} & \textbf{11 / 385} & \textbf{2,86 \%} & \textbf{ 26 h} \\
-\bottomrule
-\end{tabular}
-\caption{Mesure alternative : sweep strict sur $\theta$ avec prédictions multiples par alerte.
-Donne un risque CG non-trivial (>0) mais moins d'alertes filtrées.}
-\label{tab:sweep_strict}
-\end{table}
-
-\paragraph{Interprétation.}
+\paragraph{Le plancher $T_{\min}$ — levier opérationnel.}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Section 8} maximise le gain (toutes les alertes évaluées) et exploite le fait
-    qu'aucun CG n'arrive après last\_CG + 30 min dans une alerte. C'est la lecture la plus
-    \emph{opérationnelle} : on lève au dernier CG + $T_q$ et on est certain de n'avoir aucun
-    incident CG.
-    \item \textbf{Sweep $\theta$} est la lecture la plus stricte : on simule l'incertitude
-    opérationnelle (on ne sait pas en temps réel quel CG sera le dernier). Le risque CG non-nul
-    quantifie cette incertitude.
+    \item $T_{\min} = 0$ : on suit pleinement le modèle. Risque maximum, gain maximum.
+    \item $T_{\min} = 30$ : on attend toujours au moins 30 min après chaque CG $\approx$
+    baseline Météorage. Risque minimum, gain minimum.
+    \item $T_{\min}$ intermédiaire : compromis.
 \end{itemize}
 
-\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Honnêteté scientifique}]
-Le \textbf{0 \% de la mesure Section 8} n'est pas un mérite du modèle — c'est une conséquence
-mathématique de la définition d'une alerte Météorage. Le modèle exploite simplement cette
-structure pour gagner du temps avant le timer 30 min, sans rien manquer côté CG.
+\subsection{Résultats — sweep $T_{\min}$ à $q = 0{,}95$}
 
-Sur la \textbf{mesure sweep $\theta$ strict}, on n'atteint pas la cible officielle $R < 2\%$ :
-le minimum est 2,86 \% à $\theta = 0{,}99$. Pour y aller, il faudrait améliorer la confidence
-(classifieur secondaire \og dernier CG \fg{} dédié).
+Simulation sur \textbf{973 alertes} de l'eval 2023-25, \textbf{385 CG <3 km dangereux} :
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{cccccc}
+\toprule
+\textbf{$T_{\min}$} & \textbf{Timer moyen} & \textbf{Gain total} & \textbf{Gain/alerte} & \textbf{CG manqués} & \textbf{Risque CG} \\
+\midrule
+ 0 min &  4,9 min & 953 h & 58,8 min & 339/385 & \textbf{88,05 \%} (non déployable) \\
+10 min & 12,4 min & 673 h & 41,5 min & 205/385 & 53,25 \% \\
+15 min & 17,6 min & 505 h & 31,1 min & 130/385 & 33,77 \% \\
+20 min & 22,0 min & 365 h & 22,5 min & 108/385 & 28,05 \% \\
+\textbf{25 min} & \textbf{26,2 min} & \textbf{251 h} & \textbf{15,4 min} & \textbf{66/385} & \textbf{17,14 \%} \textit{(recommandé)} \\
+30 min & 30,0 min & 136 h &  8,4 min &  33/385 &  8,57 \% (prudent) \\
+\midrule
+Baseline 30 min stricte & 30 min & 0 h & 0 min & 0/385 & 0 \% (référence) \\
+\bottomrule
+\end{tabular}
+\caption{Compromis gain/risque sur eval 2023-25 selon le plancher $T_{\min}$. Le sweet
+spot opérationnel est à $T_{\min} = 25$ : 251 h gagnées, 17 \% de risque, timer moyen 26 min.}
+\label{tab:sweep_tmin}
+\end{table}
+
+\paragraph{Lecture.} À $T_{\min} = 25$, on gagne en moyenne 15,4 min sur chaque alerte
+(soit 251 heures cumulées sur l'eval), tout en limitant le risque à 17 \%. C'est notre
+point d'opération recommandé. L'opérateur peut choisir un $T_{\min}$ plus haut ou plus
+bas selon sa tolérance au risque.
+
+\subsection{Détail par aéroport ($q = 0{,}95$, $T_{\min} = 25$)}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Aéroport} & \textbf{Nb alertes} & \textbf{Timer moyen} & \textbf{Gain/alerte} & \textbf{Gain total} & \textbf{CG manqués} & \textbf{Risque CG} \\
+\midrule
+Ajaccio  & 192 & 26,0 min & 11,5 min & 37 h & 7 / 43  & 16,28 \% \\
+Bastia   & 233 & 26,3 min & 15,9 min & 62 h & 9 / 122 &  7,38 \% \\
+Biarritz & 217 & 26,4 min & 12,7 min & 46 h & 7 / 55  & 12,73 \% \\
+Nantes   &  88 & 25,7 min & 16,0 min & 24 h & 7 / 26  & 26,92 \% \\
+Pise     & 243 & 26,1 min & 20,4 min & 83 h & 36 / 139 & 25,90 \% \\
+\midrule
+\textbf{TOTAL} & \textbf{973} & \textbf{26,2 min} & \textbf{15,4 min} & \textbf{251 h} & \textbf{66 / 385} & \textbf{17,14 \%} \\
+\bottomrule
+\end{tabular}
+\caption{Détail par aéroport. Les profils diffèrent fortement selon la dynamique locale des
+orages. Pise (orages denses) donne le gain le plus élevé (83 h) mais aussi un risque marqué
+(26 \%). Bastia gagne 62 h avec seulement 7,4 \% de risque — le meilleur ratio. Nantes a peu
+d'alertes (88) mais un risque relatif élevé (7/26 = 27 \%).}
+\label{tab:by_airport}
+\end{table}
+
+\subsection{Effet de $q$ — Pareto frontier $(q, T_{\min})$}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ccccc}
+\toprule
+\textbf{$q$} & \textbf{$T_{\min}$} & \textbf{Gain total} & \textbf{Risque CG} & \textbf{Profil} \\
+\midrule
+0,85 & 25 & 260 h & 17,40 \% & agressif ($T_q$ court) \\
+0,95 & 25 & 251 h & 17,14 \% & équilibré (recommandé) \\
+0,99 & 25 & 234 h & 16,10 \% & prudent ($T_q$ long) \\
+\midrule
+0,95 & 20 & 365 h & 28,05 \% & plus de gain, plus de risque \\
+0,95 & 30 & 136 h &  8,57 \% & plus prudent, moins de gain \\
+\bottomrule
+\end{tabular}
+\caption{Le choix de $q$ (calibration de $T_q$) a un effet modeste : le plancher $T_{\min}$
+domine. Le levier opérationnel principal est $T_{\min}$.}
+\end{table}
+
+\subsection{Pourquoi le risque n'est pas à 0 \% : limites assumées}
+
+\begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Honnêteté scientifique}]
+La cible 2 \% du protocole officiel n'est pas atteinte. Plusieurs causes :
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{La confidence $S(30|X)$ n'est pas parfaite} : à un CG en milieu d'orage actif,
+    le modèle prédit $T_q$ court. Si le prochain CG arrive plus tard que $T_q$ par chance,
+    on lève prématurément $\to$ incident.
+    \item \textbf{La définition d'alerte dans l'eval est plus large que la règle stricte 30 min} :
+    108 gaps intra-alerte $> 30$ min existent dans l'eval (vs.\ 0 attendu dans la définition
+    stricte Météorage). Notre simulation lève à $T_{\min}=30$ dans ces cas alors que Météorage
+    maintient l'alerte ouverte. D'où le 8,57 \% résiduel même à $T_{\min} = 30$.
+\end{enumerate}
+
+\textbf{Pour atteindre $R < 2\,\%$} : il faudrait entraîner un \emph{classifieur secondaire
+dédié} à la tâche \og ce CG est-il le dernier de l'alerte ? \fg{} avec des features
+combinant $T_q$, $S(30|X)$, \texttt{rolling\_gap\_5}, \texttt{cg\_rank}, etc. Ce classifieur
+fournirait une confidence plus tranchée, qui filtrerait mieux les CG du milieu d'orage. C'est
+notre perspective principale d'amélioration.
 \end{tcolorbox}
 
-\paragraph{Pistes d'amélioration.}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Classifieur secondaire \og dernier CG \fg{}} entraîné avec $S(30|X)$, $T_q$,
-    \texttt{rolling\_gap\_5}, \texttt{cg\_rank} comme features. Permettrait au sweep $\theta$
-    de mieux filtrer.
-    \item \textbf{Cap dur à 30 min} sur les CG en début d'alerte : supprime les incidents triviaux
-    sur CG isolés.
-    \item \textbf{Re-fit avec un objectif joint} risque/gain au lieu du C-index seul.
+\subsection{Alignement avec le protocole officiel Data Battle}
+
+Notre simulation reprend exactement la mécanique du notebook officiel
+\texttt{Evaluation\_databattle\_meteorage.ipynb}, reproduite dans
+\texttt{Evaluation\_databattle\_weibull.ipynb} :
+\begin{itemize}[leftmargin=*,topsep=2pt]
+    \item \textbf{Pareil} : 1 décision de levée par alerte, gain = $(\text{last\_lightning} + 30) - \text{levée\_prédite}$,
+    risque = nombre de CG <3 km arrivant après la levée prédite.
+    \item \textbf{Spécifique à notre approche} : nous simulons la mécanique \emph{temps réel}
+    (timer CG par CG, plancher $T_{\min}$) au lieu de la lecture \emph{post-hoc} du jury
+    (sweep $\theta$ sur la confidence). Les deux donnent des résultats similaires si on
+    aligne la confidence et le plancher.
 \end{itemize}
 
 % ===============================================================
@@ -902,23 +821,25 @@ le minimum est 2,86 \% à $\theta = 0{,}99$. Pour y aller, il faudrait améliore
 
 \medskip
 
-\textbf{Évaluation sur eval 2023-25 (critère CG <3 km, voir section~\ref{sec:sweep_theta}) :}
+\textbf{Évaluation sur eval 2023-25 — simulation opérationnelle réelle (voir section~\ref{sec:eval_ops}) :}
 
-\textit{Mesure principale (1 décision par alerte au dernier CG, toutes les 1\,352 alertes
-évaluées)} :
+Sur 973 alertes inédites avec 385 CG <3 km dangereux, à $q = 0{,}95$ avec un plancher
+opérationnel $T_{\min}$ :
 \begin{itemize}[leftmargin=*,topsep=2pt]
-    \item À $q = 0{,}85$ : 0 \% de risque CG, \textbf{388 h} de gain.
-    \item À $q = 0{,}95$ : 0 \% de risque CG, \textbf{330 h} de gain.
-    \item À $q = 0{,}99$ : 0 \% de risque CG, 269 h de gain.
-    \item Le 0 \% est une conséquence de la définition d'une alerte (aucun CG après last\_CG + 30 min).
+    \item \textbf{Point recommandé} ($T_{\min} = 25$ min) : \textbf{251 h gagnées}, timer
+    effectif moyen 26 min, risque CG \textbf{17,14 \%} (66/385).
+    \item Point prudent ($T_{\min} = 30$) : 136 h gain, 8,57 \% risque CG.
+    \item Point agressif ($T_{\min} = 20$) : 365 h gain, 28 \% risque CG.
+    \item Baseline 30 min Météorage stricte : 0 h / 0 \% (référence parfaite).
 \end{itemize}
 
-\textit{Mesure alternative (sweep $\theta$ strict, ALL CG predictions)} :
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item À $\theta = 0{,}85$ : 7,53 \% CG / 118 h sur 140 alertes filtrées.
-    \item À $\theta = 0{,}99$ : 2,86 \% CG / 26 h sur 26 alertes filtrées.
-    \item Le seuil $R < 2\,\%$ n'est pas atteint avec la \texttt{confidence} $S(30 \mid X)$ seule.
-\end{itemize}
+\textit{Détail par aéroport à $T_{\min} = 25$} : profils différents — Bastia 62 h / 7,4 \%
+(meilleur ratio), Pise 83 h / 26 \% (gain le plus élevé), Ajaccio 37 h / 16 \%, Biarritz
+46 h / 13 \%, Nantes 24 h / 27 \%.
+
+\textit{Limite assumée} : la cible 2 \% du protocole n'est pas atteinte avec la confidence
+$S(30|X)$ seule. Perspective principale : entraîner un classifieur secondaire dédié à la
+tâche \og ce CG est-il le dernier ? \fg{} pour mieux filtrer les CG du milieu d'orage.
 \end{tcolorbox}
 
 % ===============================================================
