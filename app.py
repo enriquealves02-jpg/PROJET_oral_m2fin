@@ -150,14 +150,18 @@ def build_predictions_csv(q: float):
     all_cg = all_cg.copy()
     all_cg['date_utc'] = pd.to_datetime(all_cg['date'], utc=True)
 
+    pred_end_series = all_cg['date_utc'] + pd.to_timedelta(Tq, unit='m')
     predictions = pd.DataFrame({
         'airport': all_cg['airport'].values,
         'airport_alert_id': all_cg['airport_alert_id'].values,
-        'prediction_date': all_cg['date_utc'].values,
-        'predicted_date_end_alert': (all_cg['date_utc'] + pd.to_timedelta(Tq, unit='m')).values,
+        'prediction_date': all_cg['date_utc'].reset_index(drop=True),
+        'predicted_date_end_alert': pred_end_series.reset_index(drop=True),
         'confidence': confidence,
         'T_q_min': Tq,
     })
+    predictions['prediction_date'] = pd.to_datetime(predictions['prediction_date'], utc=True)
+    predictions['predicted_date_end_alert'] = pd.to_datetime(
+        predictions['predicted_date_end_alert'], utc=True)
     return predictions, all_cg
 
 
@@ -185,10 +189,13 @@ def evaluate(q: float):
 
     # --- Protocole officiel : theta = q ---
     theta = q
-    pred_over_theta = predictions.loc[predictions['confidence'] >= theta]
+    pred_over_theta = predictions.loc[predictions['confidence'] >= theta].copy()
+    pred_over_theta['predicted_date_end_alert'] = pd.to_datetime(
+        pred_over_theta['predicted_date_end_alert'], utc=True)
     pred_min = (pred_over_theta
                 .groupby(['airport', 'airport_alert_id'])['predicted_date_end_alert']
                 .min())
+    pred_min = pd.to_datetime(pred_min, utc=True)
 
     alerts_grp = df_raw.groupby(['airport', 'airport_alert_id'])
 
