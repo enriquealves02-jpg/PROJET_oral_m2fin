@@ -667,6 +667,59 @@ Sur les 1\,352 alertes : 330 heures gagnées à $q = 0{,}95$. \fg{}
 alerte. Certaines alertes ont une confidence trop basse partout $\Rightarrow$ elles ne sont pas
 \og levées en avance \fg{} par le modèle et restent à la baseline.)
 
+\medskip
+\noindent\begin{tcolorbox}[colback=blue!4,colframe=blue!50!black,title=\textbf{C'est quoi une \og alerte filtrée \fg{} et pourquoi on filtre ?}]
+\textbf{Une alerte filtrée} = une alerte pour laquelle \emph{au moins une de nos prédictions
+passe le seuil} $\theta$. C'est mécaniquement la définition donnée par le code du protocole
+officiel :
+
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+# Etape 1 : on filtre les predictions individuelles
+pred_over_theta = predictions[predictions['confidence'] >= theta]
+
+# Etape 2 : on groupe par alerte et on prend la plus precoce
+pred_min_par_alerte = pred_over_theta.groupby('airport_alert_id')\
+                       .predicted_date_end_alert.min()
+
+# Etape 3 : on itere uniquement sur les alertes qui ont AU MOINS
+# une prediction restante apres le filtre theta
+for (apt, aid), pred_end in pred_min_par_alerte.items():
+    ...  # mesurer gain et risque
+\end{lstlisting}
+
+\textbf{Pourquoi on filtre, concrètement} : pour qu'on lève une alerte en avance, il faut que
+le modèle soit \emph{suffisamment confiant} qu'on peut le faire sans risque. Sinon on garde
+la règle Météorage 30 min par défaut.
+
+\medskip
+\textbf{Reprenons l'exemple} (4 CG, $T_q$ et confidences donnés) :
+\begin{itemize}[topsep=2pt]
+    \item À $\theta = 0{,}95$ : la prédiction de CG\_4 (confidence 0,97) passe le filtre.
+    Cette alerte est \og filtrée \fg{} (= incluse). On lève à 14h30.
+    \item À $\theta = 0{,}99$ : aucune prédiction n'a confidence $\geq 0{,}99$. Aucune n'est
+    retenue. Cette alerte \textbf{n'est PAS filtrée} (= elle ne fait pas partie des alertes
+    pour lesquelles on lève en avance). Elle garde la baseline 30 min $\Rightarrow$
+    \textbf{0 minute gagnée} sur cette alerte.
+\end{itemize}
+
+\textbf{Conséquence sur l'eval entière} :
+\begin{itemize}[topsep=2pt]
+    \item À $\theta = 0{,}85$ : 140 alertes sur 1\,352 ont au moins une prédiction confiance $\geq
+    0{,}85$. On lève en avance sur ces 140. Les 1\,212 autres gardent la baseline (0 minute
+    gagnée). Gain total = \textbf{118 h}.
+    \item À $\theta = 0{,}99$ : seules 26 alertes sur 1\,352 ont une prédiction confiance $\geq
+    0{,}99$. Gain total = \textbf{26 h}.
+\end{itemize}
+
+\textbf{Donc : alerte filtrée = alerte où le modèle est assez confiant pour lever en avance.}
+Plus $\theta$ est strict, moins d'alertes le sont, moins on gagne au total. C'est la pénalité
+imposée par le protocole quand notre confidence n'est pas bien calibrée.
+
+\textbf{Pourquoi la Mesure 1 n'a pas ce problème} : parce qu'elle n'utilise pas du tout la
+confidence pour filtrer. On émet juste UNE prédiction par alerte (au dernier CG) et on l'utilise
+toujours $\Rightarrow$ \textbf{toutes les 1\,352 alertes contribuent au gain}.
+\end{tcolorbox}
+
 \begin{table}[H]
 \centering
 \small
