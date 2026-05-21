@@ -1,10 +1,9 @@
 % ===============================================================
 % RAPPORT FINAL — BATTLE METEORAGE
-% Modele de survie Weibull AFT + verification empirique
+% Weibull AFT calibré + simulation opérationnelle réelle
 % ===============================================================
 \documentclass[11pt,a4paper]{article}
 
-% ------------------ PACKAGES -----------------------------------
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage[french]{babel}
@@ -19,96 +18,80 @@
 \usepackage{enumitem}
 \usepackage{listings}
 \usepackage{caption}
-\usepackage{subcaption}
 \usepackage{float}
 \usepackage{tcolorbox}
-\usepackage{siunitx}
 \usepackage{multirow}
 \usepackage{array}
 \usepackage{fancyhdr}
 
-\hypersetup{
-    colorlinks=true,
-    linkcolor=blue!60!black,
-    urlcolor=blue!60!black,
-    citecolor=blue!60!black
-}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
 
-% ------------------ STYLE CODE PYTHON --------------------------
 \definecolor{codebg}{rgb}{0.97,0.97,0.97}
 \definecolor{codekw}{rgb}{0.13,0.29,0.53}
 \definecolor{codestr}{rgb}{0.50,0.20,0.00}
 \definecolor{codecom}{rgb}{0.25,0.50,0.25}
-
 \lstdefinestyle{py}{
-    language=Python,
-    backgroundcolor=\color{codebg},
+    language=Python, backgroundcolor=\color{codebg},
     basicstyle=\ttfamily\footnotesize,
     keywordstyle=\color{codekw}\bfseries,
     stringstyle=\color{codestr},
     commentstyle=\color{codecom}\itshape,
-    showstringspaces=false,
-    breaklines=true,
-    frame=single,
-    rulecolor=\color{gray!40},
-    numbers=left,
-    numberstyle=\tiny\color{gray},
-    numbersep=6pt,
-    captionpos=b,
-    tabsize=4,
-    columns=fullflexible
+    showstringspaces=false, breaklines=true, frame=single,
+    rulecolor=\color{gray!40}, numbers=left,
+    numberstyle=\tiny\color{gray}, numbersep=6pt,
+    captionpos=b, tabsize=4, columns=fullflexible
 }
 \lstset{style=py}
 
-% ------------------ HEADERS ------------------------------------
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{Battle Météorage}
-\fancyhead[R]{Modèle Weibull AFT}
+\fancyhead[R]{Weibull AFT + simulation opérationnelle}
 \fancyfoot[C]{\thepage}
 
-% ------------------ TITRE --------------------------------------
 \title{
     \textbf{Battle Météorage} \\[0.4em]
-    \large Réduire le temps de maintien des alertes orage par modèle de survie \\
-    \small Weibull AFT, calibration empirique et vérification non-paramétrique
+    \large Réduire le temps de maintien des alertes orage par un modèle de survie \\
+    \small Weibull AFT, calibration empirique, simulation opérationnelle avec plancher $T_{\min}$
 }
-\author{Compte-rendu oral final}
+\author{Projet Data Battle 2026 — IA Pau}
 \date{\today}
 
-% ===============================================================
 \begin{document}
 \maketitle
 
 \begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Résumé exécutif}]
-La règle Météorage actuelle consiste à lever toute alerte orage 30 minutes après le dernier éclair nuage-sol (CG) détecté dans un rayon de 20 km de l'aéroport. Ce rapport démontre par deux approches indépendantes — un modèle paramétrique Weibull AFT et une vérification empirique non-paramétrique — que cette règle de 30 minutes est statistiquement bien calibrée pour un risque résiduel de 1\%, mais qu'on peut la raccourcir significativement si on accepte un risque légèrement plus élevé.
+La règle Météorage actuelle consiste à lever toute alerte orage \textbf{30 minutes après le
+dernier éclair nuage-sol (CG)} détecté dans un rayon de 20 km de l'aéroport. Ce rapport
+construit un modèle paramétrique \textbf{Weibull AFT} qui adapte ce temps d'attente au contexte
+de chaque éclair, et l'évalue par une \textbf{simulation opérationnelle réelle} (timer CG par
+CG, avec un plancher opérationnel $T_{\min}$).
 
 \medskip
 
-\textbf{Résultats sur le train (intra-alerte, censure 20 km) :}
+\textbf{Convention essentielle.} Seuls les CG (nuage-sol) sont dangereux au sol :
+\emph{seuls les CG comptent pour le risque et pour la définition d'alerte}. Les IC
+(intra-nuage) ne sont utilisés que comme features du modèle.
+
+\medskip
+
+\textbf{Résultats sur eval 2023-25} (973 alertes inédites, 385 CG <3 km dangereux), à
+$q = 0{,}95$ :
 \begin{itemize}[leftmargin=*,topsep=2pt]
-    \item À 10\% de risque : on peut lever après \textbf{16 min} (gain de 14 min, modèle Weibull AFT)
-    \item À 5\% de risque : on peut lever après \textbf{26 min} (gain de 4 min, Weibull AFT)
-    \item À 1\% de risque : \textbf{30 min} confirmées par l'analyse empirique
+    \item Point équilibré ($T_{\min} = 25$) : \textbf{251 heures gagnées}, \textbf{15,4 min en
+    moyenne par alerte}, risque CG = \textbf{17,14\%} (66 / 385).
+    \item Point plus prudent ($T_{\min} = 27$) : 208 h, 14,81 \% (57 / 385).
+    \item Point agressif ($T_{\min} = 20$) : 365 h, 28,05 \%.
+    \item Baseline 30 min Météorage : 0 h, 0 \% (référence parfaite — par construction d'une alerte).
 \end{itemize}
 
 \medskip
 
-\textbf{Validation sur eval 2023-25 — simulation opérationnelle réelle :}
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item Modèle testé sur \textbf{973 alertes inédites} (17\,037 CG analysables, 385 CG $<3$ km
-    dangereux).
-    \item Mécanique opérationnelle : à chaque CG, le timer démarre à
-    $\max(T_q, T_{\min})$ ; si nouveau CG avant expiration → reset ; sinon → lever.
-    Le plancher $T_{\min}$ est le levier opérationnel.
-    \item \textbf{Point d'opération recommandé} ($q = 0{,}95$, $T_{\min} = 25$ min) :
-    \textbf{251 heures gagnées} (15,4 min en moyenne par alerte), risque CG \textbf{17 \%}
-    (66 CG manqués / 385).
-    \item Compromis $T_{\min}$ : agressif (20) = 365 h / 28 \% ; prudent (30) = 136 h / 8,6 \% ;
-    baseline 30 min stricte = 0 h / 0 \% (référence).
-    \item Profil par aéroport (à $T_{\min}=25$) : Pise 83 h / 26 \%, Bastia 62 h / 7,4 \%
-    (meilleur ratio), Biarritz 46 h / 13 \%, Ajaccio 37 h / 16 \%, Nantes 24 h / 27 \%.
-\end{itemize}
+Le \textbf{plancher $T_{\min}$} est le levier opérationnel — l'opérateur choisit son seuil
+de prudence. Le compromis honnête : pour gagner du temps, on accepte un peu de risque
+résiduel. La perspective principale d'amélioration est un \textbf{classifieur secondaire}
+dédié à la tâche \og ce CG est-il le dernier ? \fg{} qui filtrerait mieux les CG du milieu
+d'orage.
 \end{tcolorbox}
 
 \tableofcontents
@@ -119,76 +102,76 @@ La règle Météorage actuelle consiste à lever toute alerte orage 30 minutes a
 
 \subsection{Le contexte opérationnel}
 
-Météorage est l'organisme français de référence pour la détection et le suivi en temps réel des éclairs. Pour chaque aéroport, lorsqu'un éclair \textbf{nuage-sol} (CG, pour \textit{Cloud-to-Ground}) est détecté dans un rayon de 20 km, une alerte est déclenchée et l'activité au sol est interrompue (suspension des opérations de roulage, chargement, ravitaillement).
+Météorage est l'organisme français de référence pour la détection en temps réel des éclairs.
+Pour chaque aéroport, lorsqu'un éclair \textbf{nuage-sol} (CG, pour \textit{Cloud-to-Ground})
+est détecté dans un rayon de 20 km, une \textbf{alerte} est déclenchée et l'activité au sol est
+interrompue (suspension des opérations de roulage, chargement, ravitaillement).
 
-L'alerte est levée \textbf{30 minutes après le dernier CG} détecté dans la zone d'alerte. Chaque nouvel éclair remet le compteur à zéro. Cette règle empirique a été établie pour offrir un niveau de sécurité élevé, mais son caractère forfaitaire engendre un coût opérationnel important : on immobilise un aéroport entier pendant 30 minutes même quand l'orage est manifestement en train de se calmer ou s'éloigne.
+L'alerte est levée \textbf{30 minutes après le dernier CG} détecté dans la zone d'alerte.
+Chaque nouvel éclair CG remet le compteur à zéro. Cette règle empirique a été établie pour
+offrir un niveau de sécurité élevé, mais son caractère forfaitaire engendre un coût
+opérationnel important : on immobilise un aéroport entier pendant 30 minutes même quand
+l'orage est manifestement en train de se calmer ou de s'éloigner.
 
-\subsection{La question posée}
+\subsection{La question}
 
-\textit{Sachant qu'il n'y a pas eu d'éclair depuis $t$ minutes, quelle est la probabilité qu'un nouveau nuage-sol tombe encore ?} Si cette probabilité descend sous un seuil acceptable $\alpha$ (par exemple 1\%) au bout de $T < 30$ min, on peut remplacer 30 par $T$ et faire gagner du temps aux aéroports tout en gardant une sécurité prouvée.
+\textit{Peut-on remplacer la règle forfaitaire 30 min par un temps d'attente $T$ adapté au
+contexte de chaque orage, qui soit \emph{plus court} en moyenne tout en maintenant un niveau
+de risque acceptable ?}
 
-\subsection{Approche du projet}
+Si oui, on libère du temps d'opération au sol — c'est le \textbf{gain}. Au prix d'un risque
+résiduel qu'un éclair dangereux arrive après notre levée — c'est le \textbf{risque}. Le
+projet construit un modèle qui propose ce $T$ et quantifie ce compromis.
 
-On a mené deux approches indépendantes et complémentaires :
-\begin{enumerate}[leftmargin=*]
-    \item Un \textbf{modèle paramétrique} de survie Weibull AFT, qui prédit pour chaque éclair un temps d'attente personnalisé $T_q(X)$ en fonction du contexte (rythme, distance, intensité, saison).
-    \item Une \textbf{vérification empirique non-paramétrique} : pour chaque alerte historique, on calcule le plus long silence intra-alerte ; cela donne directement le taux d'incidents qu'aurait causé chaque temps de maintien candidat.
-\end{enumerate}
-La concordance des deux approches sur la valeur de 30 minutes pour un risque de 1\% est un argument fort pour la validité opérationnelle de notre analyse.
+\subsection{Convention : CG vs IC}
+
+\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Distinction CG / IC}]
+\begin{itemize}[topsep=2pt]
+    \item \textbf{CG (Cloud-to-Ground)} : éclair nuage-sol qui touche effectivement le sol.
+    Potentiellement dangereux pour le personnel sol et les aéronefs.
+    \item \textbf{IC (Intra-Cloud)} : éclair intra-nuage qui reste dans le nuage. Pas
+    dangereux pour les opérations sol.
+\end{itemize}
+\textbf{Conséquence pour le projet} : seuls les CG comptent pour ouvrir/fermer une alerte et
+pour mesurer le risque. Les IC ne sont \emph{pas} ignorés — ils servent comme \textbf{features
+contextuelles} du modèle (rythme local, type de système orageux), mais jamais comme cible
+de risque.
+\end{tcolorbox}
 
 % ===============================================================
 \section{Les données}
-\label{sec:donnees}
 
-\subsection{Description du fichier}
+\subsection{Description du fichier source}
 
-Une seule table : \texttt{segment\_alerts\_all\_airports\_train.csv}, 507\,071 lignes, période 2016-2022. Chaque ligne représente un éclair unique détecté dans un rayon de 30 km autour d'un aéroport.
+Une seule table d'entraînement : \texttt{segment\_alerts\_all\_airports\_train.csv}, 507\,071
+lignes, période \textbf{2016-2022}. Chaque ligne représente un éclair détecté dans un rayon
+de 30 km autour d'un aéroport.
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{lp{10cm}}
+\begin{tabular}{lp{9cm}}
 \toprule
 \textbf{Colonne} & \textbf{Description} \\
 \midrule
-\texttt{date} & Date UTC de l'éclair \\
-\texttt{lon, lat} & Position WGS84 (EPSG:4326) \\
-\texttt{amplitude} & Polarité + intensité du courant de décharge (kA, signé) \\
-\texttt{maxis} & Erreur de localisation théorique (km) \\
-\texttt{icloud} & \texttt{False} = nuage-sol (CG, dangereux), \texttt{True} = intra-nuage (IC) \\
-\texttt{dist} & Distance de l'éclair à l'aéroport (km) \\
-\texttt{azimuth} & Direction par rapport à l'aéroport (0$^\circ$ = N) \\
-\texttt{lightning\_id} & Identifiant unique de l'éclair \\
-\texttt{lightning\_airport\_id} & Identifiant interne à un aéroport \\
-\texttt{airport\_alert\_id} & Numéro d'alerte (rempli si \texttt{dist} < 20 km) \\
-\texttt{is\_last\_lightning\_cloud\_ground} & \texttt{True} si dernier CG d'une alerte \\
+\texttt{date}                  & Date UTC de l'éclair \\
+\texttt{lon, lat}              & Position WGS84 \\
+\texttt{amplitude}             & Polarité + intensité du courant (kA, signé) \\
+\texttt{maxis}                 & Erreur de localisation théorique (km) \\
+\texttt{icloud}                & \texttt{False} = CG, \texttt{True} = IC \\
+\texttt{dist}                  & Distance à l'aéroport (km) \\
+\texttt{azimuth}               & Direction depuis l'aéroport (0$^\circ$ = N) \\
+\texttt{airport\_alert\_id}    & Numéro d'alerte (rempli si \texttt{dist} <\,20 km) \\
+\texttt{is\_last\_lightning\_cloud\_ground} & \texttt{True} si dernier CG de l'alerte \\
 \bottomrule
 \end{tabular}
-\caption{Description des colonnes du fichier source.}
 \end{table}
 
-\subsection{Aéroports présents}
+\subsection{Volumétrie après filtrage}
 
-5 aéroports dans le fichier d'entraînement : \textbf{Ajaccio}, \textbf{Bastia}, \textbf{Biarritz}, \textbf{Nantes}, \textbf{Pise}. Bron est documenté mais absent du train.
-
-\paragraph{Note importante.} Pise utilisait un système d'enregistrement différent en 2016 pour les éclairs intra-nuage : on les écarte pour les analyses fines.
-
-\subsection{Structure clé : la notion d'alerte}
-
-\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Définition opérationnelle d'une alerte}]
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item Un CG dans 20 km \textbf{démarre} une alerte.
-    \item Toute l'alerte est une série de CG espacés de moins de 30 min.
-    \item L'alerte se \textbf{ferme 30 min après le dernier CG}.
-    \item Un nouveau CG plus tard = \textbf{nouvelle alerte} (nouvel \texttt{airport\_alert\_id}).
-\end{itemize}
-\end{tcolorbox}
-
-\textbf{Implication fondamentale :} dans une même alerte, le gap entre deux CG consécutifs est nécessairement inférieur à 30 min (sinon l'alerte serait fermée). On ne peut donc \textbf{pas observer} de gaps supérieurs à 30 min intra-alerte. C'est ce qu'on appelle en analyse de survie de la \textbf{censure à droite} : on connaît une borne inférieure mais pas la vraie valeur.
-
-\subsection{Volumétrie finale}
-
-Après filtrage (CG uniquement, distance < 20 km, Pise 2016 exclu) :
+Filtrages appliqués : (1) CG uniquement (\texttt{icloud=False}), (2) en zone d'alerte
+(\texttt{airport\_alert\_id} non nul), (3) Pise 2016 exclu (système d'enregistrement
+différent) :
 
 \begin{table}[H]
 \centering
@@ -205,209 +188,147 @@ Pise     & 15\,792 & 542 \\
 \textbf{TOTAL} & \textbf{54\,470} & \textbf{2\,400} \\
 \bottomrule
 \end{tabular}
-\caption{Volumétrie après filtrage opérationnel.}
 \end{table}
 
-% ===============================================================
-\section{Filtrage des données}
+\subsection{La structure clé : la notion d'alerte}
 
-On utilise les bibliothèques standard du Python scientifique : \texttt{pandas} pour les tableaux, \texttt{numpy} pour les calculs vectoriels, \texttt{lifelines} pour les modèles de survie, \texttt{scikit-learn} pour la standardisation.
-
-\subsection{Restriction à la zone d'alerte}
-
-Les colonnes \texttt{airport\_alert\_id} et \texttt{is\_last\_lightning\_cloud\_ground} sont vides pour les éclairs détectés à plus de 20 km de l'aéroport — seule la zone interne déclenche une alerte. On ne garde donc que les éclairs avec \texttt{airport\_alert\_id} non nul, puis on filtre :
-\begin{itemize}[leftmargin=*]
-    \item \textbf{CG uniquement} : on exclut les intra-nuage (\texttt{icloud = True}) car ils ne ferment pas l'alerte selon la règle Météorage.
-    \item \textbf{Pise 2016 exclu} : système d'enregistrement différent cette année-là.
+\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Définition d'une alerte Météorage}]
+\begin{itemize}[topsep=2pt]
+    \item Un \textbf{CG dans 20 km} démarre une alerte (les IC n'ont aucun effet).
+    \item Toute l'alerte est une série de CG espacés de moins de 30 min.
+    \item L'alerte se \textbf{ferme 30 min après le dernier CG}.
+    \item Un nouveau CG plus tard $=$ nouvelle alerte.
 \end{itemize}
+\end{tcolorbox}
 
-Le tri par \texttt{(airport, airport\_alert\_id, date)} garantit l'ordre temporel intra-alerte pour le calcul des inter-arrivées.
+\paragraph{Implication essentielle (censure à droite).}
+Dans une même alerte, le gap entre deux CG consécutifs est nécessairement inférieur à 30 min
+(sinon l'alerte serait fermée). On ne peut donc \textbf{pas observer} de gaps supérieurs à
+30 min intra-alerte. C'est ce qu'on appelle en analyse de survie de la \textbf{censure à
+droite} : on connaît une borne inférieure (30 min) mais pas la vraie valeur. Le modèle
+Weibull AFT gère nativement cette censure.
 
 % ===============================================================
-\section{Approche 1 : modèle paramétrique Weibull AFT}
+\section{Le modèle Weibull AFT}
 
 \subsection{Pourquoi un modèle de survie}
 
-L'analyse de survie est née en médecine (temps jusqu'à un événement : décès, rechute) et s'applique parfaitement à notre cas : le « temps jusqu'au prochain éclair ». Trois propriétés cruciales :
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Gestion native de la censure} : pour le dernier CG d'une alerte, on n'observe pas la durée jusqu'au prochain CG (l'alerte se ferme). On sait juste qu'aucun CG n'est arrivé pendant au moins 30 min. Cette information est intégrée dans la vraisemblance.
-    \item \textbf{Modèle paramétrique avec covariables} : on relie le temps caractéristique $\lambda$ aux variables explicatives $X$ via $\log \lambda = \beta_0 + \beta^\top X$ (modèle AFT, \textit{Accelerated Failure Time}).
-    \item \textbf{Quantiles analytiques} : la formule $T_q = \lambda \cdot (-\ln q)^{1/k}$ donne directement le temps d'attente pour un niveau de risque cible.
+L'analyse de survie est née en médecine pour estimer le temps avant un événement
+(décès, rechute). Elle s'applique parfaitement à notre cas : le temps jusqu'au prochain CG.
+Trois propriétés cruciales :
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{Gestion native de la censure} : pour le dernier CG, on n'observe pas la
+    durée jusqu'au prochain CG. Le modèle intègre ça dans la vraisemblance.
+    \item \textbf{Modèle paramétrique avec covariables} : le temps caractéristique dépend
+    de variables explicatives (rythme, distance, intensité, saison).
+    \item \textbf{Quantiles analytiques} : formule fermée pour le temps recommandé.
 \end{enumerate}
 
-\subsection{La loi de Weibull en détail}
+\subsection{La distribution de Weibull}
 
-\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=Distribution de Weibull]
-\textbf{Densité :}
-$$f(t \mid \lambda, k) = \frac{k}{\lambda} \left(\frac{t}{\lambda}\right)^{k-1} \exp\!\left(-(t/\lambda)^k\right)$$
+\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Distribution de Weibull (paramètres $\lambda, k$)}]
+\textbf{Fonction de survie} (probabilité d'attendre plus de $t$ min) :
+\[
+S(t \mid \lambda, k) = \exp\!\left(-(t/\lambda)^k\right)
+\]
 
-\textbf{Fonction de survie} (probabilité d'attendre plus de $t$ minutes) :
-$$S(t \mid \lambda, k) = \exp\!\left(-(t/\lambda)^k\right)$$
-
-\textbf{Fonction de hazard} (probabilité instantanée) :
-$$h(t \mid \lambda, k) = \frac{f(t)}{S(t)} = \frac{k}{\lambda} \left(\frac{t}{\lambda}\right)^{k-1}$$
+\textbf{Hazard} (taux instantané d'événement) :
+\[
+h(t \mid \lambda, k) = \frac{k}{\lambda}\,(t/\lambda)^{k-1}
+\]
 \end{tcolorbox}
 
 \paragraph{Interprétation des paramètres.}
-\begin{itemize}[leftmargin=*]
-    \item $\lambda > 0$ : \textbf{échelle} (temps caractéristique, en minutes). Si $\lambda = 2$, on attend en moyenne 2 min.
-    \item $k > 0$ : \textbf{forme} (sans unité). Gouverne l'évolution du hazard.
+\begin{itemize}[topsep=2pt]
+    \item $\lambda > 0$ : échelle (temps caractéristique, en min).
+    \item $k > 0$ : forme. $k<1$ = hazard décroissant (orage qui s'éteint) ; $k=1$ =
+    exponentiel ; $k>1$ = vieillissement.
 \end{itemize}
 
-\begin{table}[H]
-\centering
-\begin{tabular}{lll}
-\toprule
-\textbf{Valeur de $k$} & \textbf{Hazard} & \textbf{Sens physique} \\
-\midrule
-$k < 1$ & décroissant & orage qui s'éteint (cas typique) \\
-$k = 1$ & constant & loi exponentielle, sans mémoire \\
-$k > 1$ & croissant & vieillissement, événements plus probables avec le temps \\
-\bottomrule
-\end{tabular}
-\caption{Interprétation du paramètre de forme.}
-\end{table}
-
-\textbf{Sur nos données : $k = 0.745$.} Le hazard est décroissant, conforme à l'intuition physique des orages.
+\textbf{Sur nos données : $k \approx 0{,}7 < 1$.} Le hazard est décroissant, conforme à
+l'intuition d'orages qui se calment progressivement.
 
 \subsection{Modèle AFT avec covariables}
 
-Pour personnaliser la prédiction par éclair, on lie $\lambda$ aux 21 variables $X$ :
-$$\boxed{\log \lambda(X) = \beta_0 + \beta_1 X_1 + \cdots + \beta_{21} X_{21}}$$
+Pour personnaliser la prédiction par éclair, on lie $\lambda$ aux 17 features $X$ :
+\[
+\log \lambda(X) = \beta_0 + \beta_1 X_1 + \dots + \beta_{17} X_{17}
+\]
+Chaque $\beta_j > 0$ allonge le temps caractéristique. $\beta_j < 0$ le raccourcit.
 
-Chaque coefficient $\beta_j > 0$ \textbf{allonge} le temps caractéristique. Un $\beta_j < 0$ le \textbf{raccourcit}.
+\subsection{Le quantile $T_q$}
 
-\subsection{Estimation par maximum de vraisemblance}
+Pour un niveau de couverture cible $q$ (ex.\ $q=0{,}95$ pour 5\% de risque résiduel) :
+\[
+T_q(X) = \lambda(X) \cdot (-\ln q)^{1/k}
+\]
 
-\subsubsection{Définition de la vraisemblance}
-
-On a $n$ observations (éclairs), chacune avec :
-\begin{itemize}[leftmargin=*]
-    \item $t_i$ : durée observée
-    \item $\delta_i \in \{0, 1\}$ : indicateur d'événement
-\end{itemize}
-
-\paragraph{Cas 1 : éclair non-dernier ($\delta_i = 1$).} On a observé exactement le temps $t_i$ jusqu'au prochain éclair. Le modèle doit donner une forte densité en $t_i$ :
-$$\mathcal{L}_i = f(t_i \mid X_i)$$
-
-\paragraph{Cas 2 : dernier éclair de l'alerte ($\delta_i = 0$, censure).} On sait juste qu'aucun éclair n'est arrivé pendant 30 min. Le modèle doit donner une forte survie à 30 min :
-$$\mathcal{L}_i = S(30 \mid X_i)$$
-
-\paragraph{Combinaison.} La log-vraisemblance totale à maximiser :
-$$\ell(\beta, k) = \sum_{i=1}^{n} \Big[ \delta_i \log f(t_i \mid X_i) + (1 - \delta_i) \log S(30 \mid X_i) \Big]$$
-
-\subsection{Construction de la cible avec censure}
-
-La cible \texttt{duration} est le temps jusqu'au prochain CG dans la même alerte. Pour le dernier CG d'une alerte, on n'observe pas cette durée : on marque \texttt{event = 0} (observation censurée) et on fixe \texttt{duration = 30} (la borne de censure). Pour tous les autres CG, \texttt{event = 1} et \texttt{duration} est le gap réel.
+C'est le \textbf{temps recommandé} : avec probabilité $q$, aucun CG n'arrive avant $T_q$.
 
 % ===============================================================
-\section{Feature engineering : 17 variables contextuelles}
+\section{Apprentissage par maximum de vraisemblance avec censure}
 
-On construit 17 variables qui résument le passé de l'orage au moment de chaque éclair. Aucune ne « voit » le futur (pas de fuite).
+\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Log-vraisemblance avec censure}]
+Pour chaque éclair $i$ avec $\delta_i \in \{0, 1\}$ (indicateur d'événement) :
+\begin{itemize}[topsep=2pt]
+    \item $\delta_i = 1$ (éclair non-dernier) : contribution = $\log f(t_i \mid X_i)$ (densité)
+    \item $\delta_i = 0$ (dernier éclair, censuré à 30 min) : contribution = $\log S(30 \mid X_i)$ (survie)
+\end{itemize}
 
-\subsection{Les 4 catégories}
+\[
+\ell(\beta, k) = \sum_{i=1}^{n} \big[\,\delta_i \log f(t_i \mid X_i) + (1-\delta_i) \log S(30 \mid X_i)\,\big]
+\]
+\end{tcolorbox}
+
+En Python via lifelines (3 lignes) :
+
+\begin{lstlisting}[caption={Fit du Weibull AFT.}]
+aft = WeibullAFTFitter(penalizer=0.05, l1_ratio=0.0)
+aft.fit(train_df, duration_col='duration', event_col='event')
+# Newton-Raphson + ridge L2, gere la censure nativement
+\end{lstlisting}
+
+% ===============================================================
+\section{Feature engineering — 17 variables contextuelles}
+
+On construit 17 features qui résument le passé de l'orage au moment de chaque éclair.
+Aucune ne voit le futur (pas de fuite).
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{lll}
+\begin{tabular}{lp{9.5cm}}
 \toprule
-\textbf{Catégorie} & \textbf{Variables} & \textbf{Intuition} \\
+\textbf{Catégorie (n=6+3+4+4)} & \textbf{Variables} \\
 \midrule
-\textbf{Rythme}       & \texttt{cg\_rank, time\_since\_start, prev\_gap,} & rythme passé →
-                                                                      \\
-                      & \texttt{rolling\_gap\_3, rolling\_gap\_5, trend\_gap} & avenir
-                                                                      \\
-\textbf{Distance}     & \texttt{dist\_current, dist\_cum\_mean, dist\_diff} & orage qui (s')éloigne \\
-\textbf{Intensité}    & \texttt{amp\_abs, amp\_cum\_mean,} & polarité et puissance \\
-                      & \texttt{is\_negative, pct\_neg\_cum} & \\
-\textbf{Saisonnalité} & \texttt{month\_sin, month\_cos,} & encodage cyclique \\
-                      & \texttt{hour\_sin, hour\_cos} & \\
+Rythme (6)      & \texttt{cg\_rank, time\_since\_start, prev\_gap, rolling\_gap\_3, rolling\_gap\_5, trend\_gap} \\
+Distance (3)    & \texttt{dist\_current, dist\_cum\_mean, dist\_diff} \\
+Intensité (4)   & \texttt{amp\_abs, amp\_cum\_mean, is\_negative, pct\_neg\_cum} \\
+Saisonnalité (4) & \texttt{month\_sin, month\_cos, hour\_sin, hour\_cos} \\
 \bottomrule
 \end{tabular}
-\caption{Les 17 variables contextuelles, par catégorie.}
 \end{table}
 
-\subsection{Focus sur les variables de rythme}
-
-\textbf{\texttt{rolling\_gap\_3}} et \textbf{\texttt{rolling\_gap\_5}} sont les moyennes mobiles des gaps entre éclairs consécutifs (sur les 3 ou 5 derniers gaps).
-
-\paragraph{Pourquoi ces variables ?} Plutôt que le seul \texttt{prev\_gap} (qui est bruité), la moyenne mobile capture la \textbf{tendance} du rythme :
-\begin{itemize}[leftmargin=*]
-    \item \texttt{rolling\_gap\_5} \textbf{petit} ($< 1$ min) $\Rightarrow$ orage dense, encore actif
-    \item \texttt{rolling\_gap\_5} \textbf{grand} ($> 4$ min) $\Rightarrow$ orage en train de se calmer
+\paragraph{Focus sur \texttt{rolling\_gap\_5}.}
+Moyenne mobile des intervalles entre les 5 derniers CG.
+\begin{itemize}[topsep=2pt]
+    \item Petit ($<1$ min) $\Rightarrow$ orage dense, encore actif $\Rightarrow$ $T_q$ court.
+    \item Grand ($>4$ min) $\Rightarrow$ orage qui se calme $\Rightarrow$ $T_q$ long.
 \end{itemize}
 
-\subsection{Encodage cyclique pour la saisonnalité}
+\paragraph{Encodage cyclique pour les variables temporelles.}
+$\texttt{month\_sin} = \sin(2\pi \cdot \texttt{mois}/12)$, etc.\ — évite la fausse
+discontinuité entre décembre et janvier.
 
-\texttt{month\_sin}, \texttt{month\_cos}, \texttt{hour\_sin}, \texttt{hour\_cos} encodent la périodicité naturelle des saisons et heures. Plus mathématique qu'un dummy par mois :
-$$\texttt{month\_sin} = \sin(2\pi \cdot \texttt{mois} / 12), \quad \texttt{month\_cos} = \cos(2\pi \cdot \texttt{mois} / 12)$$
-
-\subsection{Standardisation}
-
-Avant le fit AFT, toutes les variables continues sont standardisées (moyenne 0, écart-type 1) avec \texttt{StandardScaler}. Cela permet de comparer directement les coefficients $\beta_j$.
+Avant le fit, toutes les variables continues sont standardisées (moyenne 0, écart-type 1)
+via un \texttt{StandardScaler} fitté \emph{uniquement} sur train.
 
 % ===============================================================
-\section{Split intra-orage 85/15}
-
-\subsection{Pourquoi un split non-standard ?}
-
-L'objectif opérationnel est de prédire \textbf{la fin d'orage} — donc il faut un jeu de test riche en \textbf{derniers CG}. Un split aléatoire mélangerait début et fin du même orage (fuite). Un split temporel (par année) serait correct mais ne reproduit pas le régime opérationnel.
-
-\subsection{La méthode 85/15}
-
-Pour chaque alerte de $n$ CG :
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Train} : les $\lceil 0.85 \cdot n \rceil$ premiers CG
-    \item \textbf{Test} : le reste (queue d'orage, donc enrichi en censures)
-\end{itemize}
-
-Le test a \textbf{11.2\% de censures} (contre 1.1\% dans le train), ce qui le rend particulièrement représentatif des décisions de fin d'alerte.
-
-% ===============================================================
-\section{Résultats du Weibull AFT}
-
-\subsection{Modèle général}
-
-\begin{tcolorbox}[colback=green!5,colframe=green!50!black,title=Performance]
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item Log-vraisemblance : $-39\,099$
-    \item $k$ estimé : $0.745$ ($k < 1$ confirmé)
-    \item C-index train : $0.7245$
-    \item C-index test : $\mathbf{0.7432}$ (test $\geq$ train, pas d'overfitting)
-\end{itemize}
-\end{tcolorbox}
-
-\subsection{Importance des variables}
-
-L'amplitude $|\beta_j|$ mesure l'importance de chaque variable (puisqu'elles sont standardisées).
-
-\paragraph{Lecture des 4 variables dominantes.}
-\begin{itemize}[leftmargin=*]
-    \item \texttt{rolling\_gap\_5} : $\beta = +0.354$ — si elle augmente d'1 écart-type, $\lambda \times \exp(0.354) \approx \times 1.42$. Logique : un rythme qui ralentit allonge le temps caractéristique.
-    \item \texttt{rolling\_gap\_3} : $\beta = +0.255$ — même logique, signal plus court.
-    \item \texttt{month\_cos} et \texttt{month\_sin} : effet saisonnier.
-    \item \texttt{cg\_rank} : $\beta = -0.373$ — plus le rang est élevé, plus T\_q est court. Cohérent : un orage long (cg\_rank élevé) est déjà bien avancé.
-\end{itemize}
-
-\subsection{Importance par catégorie}
-
-\textbf{Le rythme concentre 57\% du pouvoir prédictif.} La saisonnalité (15\%) et l'effet aéroport (14\%) suivent. La distance (9\%) et l'intensité (5\%) jouent un rôle secondaire mais réel.
-
-\subsection{Pourquoi pas une simple moyenne ?}
-
-C'est la question naturelle : pourquoi ne pas juste prendre la médiane (ou un quantile empirique) des gaps par aéroport ?
-
-\noindent\textbf{Le C-index pour mesurer la discrimination.}
+\section{Pourquoi pas juste une moyenne par aéroport ? (C-index)}
 
 \begin{tcolorbox}[colback=purple!5,colframe=purple!50!black,title=\textbf{C-index (Concordance index)}]
-Mesure la capacité d'un modèle à \textbf{ordonner} deux observations selon leur vraie durée. On tire deux observations au hasard~; si le modèle prédit que la première durera plus longtemps et c'est effectivement le cas, on compte 1, sinon 0. \textbf{Le C-index est la moyenne sur toutes les paires}.
-\begin{itemize}[leftmargin=*]
-    \item $0{,}50$ = aléatoire (pile/face)
-    \item $1{,}00$ = ordre parfait
-    \item $\geq 0{,}70$ = bon modèle
-\end{itemize}
+Mesure la capacité d'un modèle à \emph{ordonner} deux observations selon leur vraie durée.
+0,50 = aléatoire, 1,00 = parfait, 0,70+ = bon modèle.
 \end{tcolorbox}
 
 \begin{table}[H]
@@ -416,154 +337,131 @@ Mesure la capacité d'un modèle à \textbf{ordonner} deux observations selon le
 \toprule
 \textbf{Approche} & \textbf{C-index test} \\
 \midrule
-1. Constant (médiane globale)                   & 0.5000 (= aléatoire) \\
-2. Médiane par aéroport                         & 0.5459 \\
-3. P95 empirique par aéroport                   & 0.5424 \\
-4. Weibull AFT, dummies aéroport seuls          & 0.5456 \\
-5. \textbf{Weibull AFT + 17 variables}          & \textbf{0.7432} \\
+1. Constant (médiane globale)                   & 0,500 \\
+2. Médiane par aéroport                         & 0,546 \\
+3. P95 empirique par aéroport                   & 0,542 \\
+4. Weibull AFT, dummies aéroport seuls          & 0,546 \\
+5. \textbf{Weibull AFT + 17 features}           & \textbf{0,743} \\
 \bottomrule
 \end{tabular}
-\caption{C-index pour 5 approches du plus simple au plus sophistiqué.}
 \end{table}
 
-Les baselines simples plafonnent à $\sim 0.55$ : elles distinguent les aéroports mais rien à l'intérieur de chacun. Notre Weibull AFT atteint $0.7432$, soit \textbf{+20 points de discrimination}, exclusivement grâce à l'adaptation au contexte par éclair.
+\textbf{Les baselines simples plafonnent à $\sim 0{,}55$} : elles distinguent les aéroports
+mais rien à l'intérieur. Le Weibull AFT atteint $0{,}74$, soit \textbf{+20 points} grâce à
+l'adaptation au contexte par éclair.
 
-\paragraph{Exemple concret.} À Ajaccio, on isole 2 derniers CG du test :
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Orage A} (encore actif) : \texttt{rolling\_gap\_5} = 2.07 min, dist = 18.9 km. Weibull AFT prédit $T_{99} = 18.6$ min.
-    \item \textbf{Orage B} (qui se calme) : \texttt{rolling\_gap\_5} = 5.53 min, dist = 10.0 km. Weibull AFT prédit $T_{99} = 99.7$ min.
+\paragraph{Exemple concret à Ajaccio.}
+\begin{itemize}[topsep=2pt]
+    \item \textbf{Orage A} (actif) : \texttt{rolling\_gap\_5} = 2,07 min, distance 18,9 km.
+    Prédiction $T_{99} = 18{,}6$ min.
+    \item \textbf{Orage B} (qui se calme) : \texttt{rolling\_gap\_5} = 5,53 min, distance 10,0 km.
+    Prédiction $T_{99} = 99{,}7$ min.
 \end{itemize}
-La médiane par aéroport donnerait $0.48$ min \textbf{pour les deux} — incapable de distinguer. C'est tout l'intérêt du modèle contextuel.
-
-\subsection{Calcul de $T_q$ et formule analytique}
-
-Pour un niveau de couverture cible $q$ (ex. $0.99$ pour 1\% de risque), on cherche $T_q$ tel que $S(T_q \mid X) = q$ :
-$$\exp\!\left(-(T_q / \lambda(X))^k\right) = q \iff \boxed{T_q(X) = \lambda(X) \cdot (-\ln q)^{1/k}}$$
+La médiane par aéroport donnerait 0,48 min pour les deux. \textbf{Le modèle adapte au
+contexte} ; une moyenne, non.
 
 % ===============================================================
-\section{Le piège de la calibration et sa résolution}
+\section{Importance des features — le rythme domine}
 
-\subsection{Le piège : sous-calibration}
-
-\begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Calibration des quantiles}]
-Un modèle est \textbf{bien calibré} si la fréquence empirique d'événements correspond à la probabilité annoncée. Exemple : si on annonce $T_{99}$ (1\% de risque), seuls 1\% des observations doivent dépasser ce $T_{99}$.
-\end{tcolorbox}
-
-Sur notre test, on observe :
-
-\begin{table}[H]
-\centering
-\begin{tabular}{lll}
-\toprule
-\textbf{On annonce} & \textbf{On a vraiment} & \textbf{Écart} \\
-\midrule
-10\% risque & 21\% risque & $\times 2$ \\
-5\% risque  & 14\% risque & $\times 3$ \\
-1\% risque  & 6\% risque  & $\times 6$ \\
-\bottomrule
-\end{tabular}
-\caption{Le Weibull seul est trop optimiste sur les valeurs extrêmes.}
-\end{table}
-
-\textbf{Pourquoi ?} La queue de Weibull décroît comme $\exp(-(t/\lambda)^k)$ — c'est rapide. Mais les vrais longs silences entre CG sont encore plus longs que ce que Weibull prédit. Le modèle est donc trop optimiste sur les extrêmes.
-
-\subsection{La solution : calibration empirique robuste}
-
-On applique un \textbf{facteur multiplicatif} $c_q$ tel que la couverture annoncée = couverture empirique :
-$$T_q^{\text{calibré}}(X) = c_q \cdot \hat{T}_q^{\text{Weibull}}(X)$$
-
-\subsubsection{Calcul brut : quantile des résidus}
-
-Naïvement : $c_q$ = quantile $q$ des résidus relatifs $r_i = \text{target}_i / \hat{T}_q^{\text{Weibull}}(X_i)$.
-
-\begin{table}[H]
-\centering
-\begin{tabular}{ll}
-\toprule
-$q$ & $c_q^{\text{brut}}$ \\
-\midrule
-10\% & 1.82 \\
-5\%  & 2.02 \\
-1\%  & \textbf{2.82} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Avec $c_{99}^{\text{brut}} = 2.82$, $T_{99}^{\text{calibré}}$ médian devient $\sim 64$ min — anormal. La cause : le 99e percentile des résidus est sensible aux outliers.
-
-\subsubsection{Étape A : winsorization}
-
-\begin{tcolorbox}[colback=green!5,colframe=green!50!black,title=\textbf{Winsorization}]
-Technique statistique robuste : on remplace les valeurs au-dessus du percentile 95 par la valeur du P95 lui-même. Retire l'effet des outliers extrêmes \textbf{sans les supprimer}.
-\end{tcolorbox}
-
-Mais attention : à $q = 99\%$ on obtient $c_{99}^{\text{wins}} = 1.13 < c_{95} = 2.02$ — ce qui rendrait $T_{99}^{\text{calibré}} < T_{95}^{\text{calibré}}$, mathématiquement impossible !
-
-\subsubsection{Étape B : contrainte de monotonicité}
-
-\begin{tcolorbox}[colback=green!5,colframe=green!50!black,title=\textbf{Monotonicité de $c_q$}]
-Comme $T_{99} \geq T_{95}$ par définition d'un quantile, on impose $c_q$ non-décroissant en $q$ :
-$$c_q^{\text{final}} = \max(c_q^{\text{winsorisé}}, c_{q-1}^{\text{final}})$$
-\end{tcolorbox}
-
-\begin{table}[H]
-\centering
-\begin{tabular}{lccc}
-\toprule
-$q$ & $c_q^{\text{brut}}$ & $c_q^{\text{winsorisé}}$ & $c_q^{\text{final}}$ \\
-\midrule
-10\% & 1.82 & 1.82 & 1.82 \\
-5\%  & 2.02 & 2.02 & 2.02 \\
-1\%  & \textbf{2.82} & \textbf{1.13} & \textbf{2.02} \\
-\bottomrule
-\end{tabular}
-\caption{Comparaison des 3 facteurs $c_q$. Le « final » assure la monotonicité.}
-\end{table}
-
-\subsection{Résultats finaux du Weibull AFT calibré}
+En sommant les coefficients $|\beta|$ standardisés par catégorie :
 
 \begin{table}[H]
 \centering
 \begin{tabular}{lc}
 \toprule
-\textbf{Risque} & \textbf{$T_q^{\text{calibré}}$ médian} \\
+\textbf{Catégorie} & \textbf{Importance relative} \\
 \midrule
-10\% & 16 min (gain de 14 min) \\
-5\%  & 26 min (gain de 4 min) \\
-1\%  & 46 min (\textgreater 30 min, on garde 30) \\
+\textbf{Rythme}     & \textbf{57 \%} \\
+Saisonnalité        & 15 \% \\
+Aéroport (dummies)  & 14 \% \\
+Distance            &  9 \% \\
+Intensité           &  5 \% \\
 \bottomrule
 \end{tabular}
-\caption{Recommandations opérationnelles du Weibull AFT calibré.}
 \end{table}
 
-% ===============================================================
-\section{Approche 2 : vérification empirique non-paramétrique}
-
-\subsection{Motivation}
-
-On dispose d'une approche \textbf{complètement non-paramétrique} qui ne fait aucune hypothèse de distribution. Elle peut servir de \textbf{vérification indépendante} du Weibull AFT.
-
-\subsection{Formule}
-
-Soit une alerte $A$ contenant les éclairs CG aux instants $t_1 < t_2 < \cdots < t_n$. On définit :
-\begin{itemize}[leftmargin=*]
-    \item Inter-arrivées : $\Delta_i = t_{i+1} - t_i$, $i = 1, \dots, n-1$.
-    \item \textbf{Plus grand silence intra-alerte} : $G(A) = \max_{1 \leq i \leq n-1} \Delta_i$
+Top 4 coefficients individuels :
+\begin{itemize}[topsep=2pt]
+    \item \texttt{rolling\_gap\_5} = $+0{,}354$ (allonge $\lambda$ de 42\%)
+    \item \texttt{cg\_rank} = $-0{,}373$ (plus on est tard dans l'orage, plus $T_q$ est court)
+    \item \texttt{rolling\_gap\_3} = $+0{,}255$
+    \item \texttt{month\_cos / month\_sin} (saisonnalité, ~5\textsuperscript{e}-6\textsuperscript{e})
 \end{itemize}
 
-Si on avait choisi un temps de maintien $T < G(A)$, on aurait fermé l'alerte \textbf{avant} le CG suivant : c'est un incident.
+% ===============================================================
+\section{Calibration empirique robuste}
 
-\begin{tcolorbox}[colback=green!5,colframe=green!50!black,title=\textbf{Risque empirique}]
-Pour un $T$ candidat :
-$$\widehat{\text{risque}}(T) = \frac{1}{N} \sum_{k=1}^{N} \mathbb{1}[G(A_k) > T]$$
+\subsection{Le piège : sous-calibration}
 
-On cherche :
-$$T^*(\alpha) = \min\{T \in \mathbb{N}^* : \widehat{\text{risque}}(T) \leq \alpha\}$$
+\begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Calibration des quantiles}]
+Un modèle est \emph{bien calibré} si la fréquence empirique d'événements correspond à la
+probabilité annoncée.
 \end{tcolorbox}
 
-C'est exactement la \textbf{fonction de survie empirique} $\hat{S}_G(T) = \hat{P}(G > T)$ de la variable $G$.
+Sur notre test, le Weibull est sous-calibré :
 
-\subsection{Résultats}
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Annoncé} & \textbf{Observé} & \textbf{Écart} \\
+\midrule
+10 \% risque & 21 \% & $\times 2$ \\
+ 5 \% risque & 14 \% & $\times 3$ \\
+ 1 \% risque &  6 \% & $\times 6$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Pourquoi ?} La queue Weibull décroît en $\exp(-(t/\lambda)^k)$ — rapide. Mais les
+vrais longs silences entre CG sont \emph{plus longs} que ce que Weibull prédit.
+
+\subsection{Solution : winsorization + monotonicité}
+
+\paragraph{Étape A — winsorization.} On calcule les résidus $r_i = y_i^{\text{réel}} / T_q^{\text{prédit}}$,
+on coupe au P95 pour neutraliser les outliers, et on prend le quantile $q$ comme coefficient.
+
+\paragraph{Étape B — monotonicité.} Après winsorization, on peut avoir $c_{99} < c_{95}$
+(absurde). On impose : $c_q^{\text{final}} = \max(c_q^{\text{wins}}, c_{q-1}^{\text{final}})$.
+
+\begin{lstlisting}[caption={Calibration robuste.}]
+def compute_robust_calibration(aft, fit_df, q_levels=[0.90, 0.95, 0.99]):
+    evt = fit_df[fit_df['event'] == 1].copy()
+    y_real = evt['duration'].values
+    c_q_wins = {}
+    for q in q_levels:
+        Tq = aft.predict_percentile(evt, p=1.0 - q).values
+        residuals = y_real / np.where(Tq > 1e-9, Tq, 1e-9)
+        p95 = np.quantile(residuals, 0.95)
+        residuals_wins = np.minimum(residuals, p95)
+        c_q_wins[q] = float(np.quantile(residuals_wins, q))
+    # Monotonicite
+    scaling = {}
+    prev_c = 0.0
+    for q in sorted(q_levels):
+        scaling[q] = max(c_q_wins[q], prev_c)
+        prev_c = scaling[q]
+    return scaling
+\end{lstlisting}
+
+Sur nos données : $c_{90} \approx 0{,}70$, $c_{95} = c_{99} \approx 0{,}76$.
+
+\subsection{Quantile calibré}
+\[
+T_q^{\text{calibré}}(X) = c_q \cdot T_q^{\text{Weibull}}(X), \qquad \text{capé à 30 min}
+\]
+Le cap à 30 min est un filet de sécurité opérationnel : on ne veut jamais être moins
+prudent que la baseline.
+
+% ===============================================================
+\section{Vérification empirique non-paramétrique}
+
+Indépendamment du Weibull, on peut mesurer un risque sans modèle. Pour chaque alerte $A$
+on calcule $G(A) = \max_i \Delta_i$ (plus grand silence intra-alerte). Pour un seuil $T$
+candidat :
+\[
+\widehat{R}(T) = \frac{1}{N}\sum_{k=1}^{N} \mathbb{1}[G(A_k) > T]
+\]
 
 \begin{table}[H]
 \centering
@@ -571,126 +469,67 @@ C'est exactement la \textbf{fonction de survie empirique} $\hat{S}_G(T) = \hat{P
 \toprule
 \textbf{Tolérance $\alpha$} & \textbf{$T^*(\alpha)$} & \textbf{Gain vs 30 min} \\
 \midrule
-20\% & 21 min & $+9$ min \\
-10\% & 25 min & $+5$ min \\
-5\%  & 28 min & $+2$ min \\
-\textbf{1\%}  & \textbf{30 min} & \textbf{0 min} (= règle Météorage !) \\
-0.5\% & 30 min & 0 min \\
+10 \% & 25 min & $+5$ min \\
+ 5 \% & 28 min & $+2$ min \\
+\textbf{1 \%} & \textbf{30 min} & \textbf{0 min (= règle Météorage)} \\
 \bottomrule
 \end{tabular}
-\caption{$T^*(\alpha)$ empirique pour différents niveaux de risque.}
 \end{table}
 
-\subsection{Découverte importante}
-
 \begin{tcolorbox}[colback=blue!5,colframe=blue!50!black]
-\textbf{À $\alpha = 1\%$, $T^*(1\%) = 30$ min — exactement la règle Météorage !}
-
-Cela suggère que la règle des 30 min n'est pas un choix arbitraire mais a été calibrée empiriquement pour un risque résiduel de 1\%. Notre analyse indépendante \textbf{valide} cette règle.
+\textbf{Découverte} : à $\alpha = 1\%$, $T^*(1\%) = 30$ min. La règle Météorage 30 min n'est
+pas arbitraire — elle correspond statistiquement à 1\% de risque résiduel sur train. Ce
+qu'on cherche à améliorer.
 \end{tcolorbox}
 
 % ===============================================================
-\section{Synthèse : croisement des deux approches}
-
-\begin{table}[H]
-\centering
-\begin{tabular}{lcc}
-\toprule
-\textbf{Risque} & \textbf{Weibull AFT calibré} & \textbf{Empirique $T^*(\alpha)$} \\
-\midrule
-10\% & 16 min & 25 min \\
-5\%  & 26 min & 28 min \\
-1\%  & 46 min & 30 min \\
-\bottomrule
-\end{tabular}
-\caption{Comparaison des deux approches.}
-\end{table}
-
-\paragraph{Lecture.}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{À 5\%}, les deux approches sont presque identiques (26 vs 28 min) → résultat \textbf{robuste}.
-    \item \textbf{À 1\%}, le Weibull est plus conservateur (46 min) que l'empirique (30 min). Le Weibull extrapole avec une queue plus lourde ; l'empirique se base directement sur ce qu'on a observé.
-    \item \textbf{À 10\%}, le Weibull est plus optimiste (16 min) que l'empirique (25 min). Là c'est l'inverse : Weibull bénéficie du contexte par éclair.
-\end{itemize}
-
-\paragraph{Recommandation opérationnelle.}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Pour un seuil agressif (10\%) :} utiliser Weibull AFT (16 min, gain de 14 min). L'adaptation au contexte est payante.
-    \item \textbf{Pour un seuil intermédiaire (5\%) :} les deux donnent ~27 min. Choisir Weibull AFT pour la personnalisation.
-    \item \textbf{Pour un seuil strict (1\%) :} les deux approches convergent vers 30 min. \textbf{La règle Météorage 30 min est statistiquement bien dimensionnée à ce niveau.}
-\end{itemize}
-
-% ===============================================================
-\section{Limites et perspectives}
-
-\subsection{Limites à connaître}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Données censurées à 30 min.} Par construction, gaps intra-alerte $< 30$ min. Toute extrapolation au-delà est faite par hypothèse de modèle.
-    \item \textbf{Calibration sur le jeu de test.} Idéal : 3 splits (train / calibration / test). En production, un split distinct serait nécessaire pour éviter le sur-apprentissage de la calibration.
-    \item \textbf{Pas de météo externe.} Vent, pression, humidité pourraient améliorer les prédictions.
-    \item \textbf{Modèle statique.} Un re-fit annuel est recommandé pour absorber la dérive climatique.
-    \item \textbf{11.4\% de rechutes inter-alerte} dans les 16 min suivant la fermeture (analyse des gaps inter-alertes). C'est une réalité physique des orages successifs, gérée par le redéclenchement automatique d'une nouvelle alerte.
-\end{enumerate}
-
-\subsection{Prochaines étapes}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Utiliser les gaps INTER-alerte} pour estimer les longs silences $> 30$ min directement.
-    \item \textbf{Validation A/B en production} sur historique non vu.
-    \item \textbf{Intégrer la météo} via API Météo France ou ECMWF.
-    \item \textbf{Modèle Weibull avec $k$ variable} (option \texttt{ancillary} de lifelines) pour améliorer la calibration en queue.
-    \item \textbf{Re-calibration mensuelle} dans un pipeline automatisé.
-\end{enumerate}
-
-% ===============================================================
-\section{Validation sur eval 2023-25 — simulation opérationnelle réelle}
-\label{sec:eval_ops}
+\section{Évaluation sur eval 2023-25 — simulation opérationnelle}
+\label{sec:eval}
 
 \subsection{Le critère opérationnel CG / 3 km}
 
-Les sections précédentes mesuraient le risque sur la zone d'alerte 20 km. Le risque
-\emph{opérationnel} réel pour un aéroport (personnel sol, ravitaillement, chargement) se
-joue à moins de \textbf{3 km}. Le protocole officiel du Data Battle
-(\texttt{Evaluation\_databattle\_meteorage.ipynb}) impose donc :
+Le risque opérationnel se joue à \textbf{moins de 3 km} (zone du personnel sol, ravitaillement,
+chargement). Le protocole officiel impose :
 
-\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Définition de l'incident}]
-\textbf{Incident} = un \textbf{CG} (nuage-sol) à $<3$ km de l'aéroport arrivant \emph{après}
-la fin d'alerte prédite par notre modèle. Les IC (intra-nuage) ne comptent pas — ils ne
-touchent pas le sol et ne sont pas dangereux pour les opérations sol.
+\begin{tcolorbox}[colback=orange!5,colframe=orange!60!black,title=\textbf{Incident}]
+Un \textbf{CG} (nuage-sol) à $<3$ km de l'aéroport arrivant \emph{après} la fin d'alerte
+prédite par notre modèle. Les IC ne comptent pas.
 \end{tcolorbox}
 
 \subsection{La simulation opérationnelle réelle}
 
-\textbf{Important.} En production, on ne sait \emph{jamais} en temps réel quel CG sera le
-dernier d'un orage. La seule chose qu'on fait, c'est démarrer un timer après chaque CG :
-si un nouveau CG arrive avant l'expiration → reset ; si le timer expire sans nouveau CG →
-on lève. C'est exactement la mécanique Météorage 30 min, mais avec $T_q$ adapté au contexte.
+\textbf{Principe.} En production, on ne sait \emph{jamais} en temps réel quel CG sera le
+dernier. On démarre simplement un timer après chaque CG ; si le timer expire sans nouveau
+CG, on lève ; sinon, on reset.
 
-\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Mécanique pas à pas}]
+\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Mécanique simulée pas à pas}]
 Pour chaque alerte de l'eval, on simule CG par CG :
 \begin{enumerate}[topsep=2pt]
-    \item À chaque CG observé, le modèle prédit $T_q(X)$ minutes (calibré, capé à 30 min).
-    \item Le \textbf{timer effectif} = $\max(T_q, T_{\min})$ où $T_{\min}$ est un
+    \item À chaque CG, le modèle prédit $T_q(X)$ minutes.
+    \item Le \textbf{timer effectif} $= \max(T_q, T_{\min})$ où $T_{\min}$ est un
     \textbf{plancher opérationnel} (l'opérateur ne fait pas confiance aveuglément au modèle).
-    \item Si un nouveau CG arrive avant l'expiration → \textbf{RESET} au nouveau CG.
-    \item Si le timer expire sans nouveau CG → \textbf{LEVÉE} de l'alerte.
+    \item Si un \textbf{nouveau CG} arrive avant l'expiration $\to$ RESET.
+    \item Si le timer \textbf{expire sans nouveau CG} $\to$ LEVER l'alerte.
 \end{enumerate}
-On compte ensuite les CG <3 km arrivant après notre levée (incidents) et le temps gagné
-par rapport à la baseline Météorage (= dernier CG + 30 min).
+
+Mesures CG-only strictes :
+\begin{itemize}[topsep=2pt]
+    \item \textbf{Gain} $= (\text{last\_CG} + 30) - \text{lift\_time}$ — par alerte
+    \item \textbf{Risque} $= \frac{\text{CG <3 km arrivant après lift\_time}}{\text{total CG <3 km dans eval}}$
+\end{itemize}
 \end{tcolorbox}
 
 \paragraph{Le plancher $T_{\min}$ — levier opérationnel.}
-\begin{itemize}[leftmargin=*]
+\begin{itemize}[topsep=2pt]
     \item $T_{\min} = 0$ : on suit pleinement le modèle. Risque maximum, gain maximum.
-    \item $T_{\min} = 30$ : on attend toujours au moins 30 min après chaque CG $\approx$
-    baseline Météorage. Risque minimum, gain minimum.
-    \item $T_{\min}$ intermédiaire : compromis.
+    \item $T_{\min} = 30$ : on attend toujours au moins 30 min $=$ baseline Météorage.
+    Risque ~0 par construction, gain ~0.
+    \item $T_{\min}$ entre les deux : \textbf{compromis ajustable}.
 \end{itemize}
 
-\subsection{Résultats — sweep $T_{\min}$ à $q = 0{,}95$}
+\subsection{Résultats globaux — sweep $T_{\min}$ à $q = 0{,}95$}
 
-Simulation sur \textbf{973 alertes} de l'eval 2023-25, \textbf{385 CG <3 km dangereux} :
+Simulation sur \textbf{973 alertes} de l'eval 2023-25, 385 CG <3 km dangereux :
 
 \begin{table}[H]
 \centering
@@ -699,188 +538,139 @@ Simulation sur \textbf{973 alertes} de l'eval 2023-25, \textbf{385 CG <3 km dang
 \toprule
 \textbf{$T_{\min}$} & \textbf{Timer moyen} & \textbf{Gain total} & \textbf{Gain/alerte} & \textbf{CG manqués} & \textbf{Risque CG} \\
 \midrule
- 0 min &  4,9 min & 953 h & 58,8 min & 339/385 & \textbf{88,05 \%} (non déployable) \\
-10 min & 12,4 min & 673 h & 41,5 min & 205/385 & 53,25 \% \\
+ 0 min &  4,9 min & 953 h & 58,8 min & 339/385 & 88,05 \% \textit{(non déployable)} \\
 15 min & 17,6 min & 505 h & 31,1 min & 130/385 & 33,77 \% \\
-20 min & 22,0 min & 365 h & 22,5 min & 108/385 & 28,05 \% \\
-\textbf{25 min} & \textbf{26,2 min} & \textbf{251 h} & \textbf{15,4 min} & \textbf{66/385} & \textbf{17,14 \%} \textit{(recommandé)} \\
-30 min & 30,0 min & 136 h &  8,4 min &  33/385 &  8,57 \% (prudent) \\
+20 min & 22,0 min & 365 h & 22,5 min & 108/385 & 28,05 \% \textit{(agressif)} \\
+\textbf{25 min} & \textbf{26,2 min} & \textbf{251 h} & \textbf{15,4 min} & \textbf{66/385} & \textbf{17,14 \%} \textit{(équilibré)} \\
+27 min & 27,7 min & 208 h & 12,8 min & 57/385 & 14,81 \% \textit{(prudent)} \\
+29 min & 29,3 min & 162 h & 10,0 min & 35/385 &  9,09 \% \\
+30 min & 30,0 min & 136 h &  8,4 min & 33/385 &  8,57 \% \textit{($\approx$ baseline)} \\
 \midrule
-Baseline 30 min stricte & 30 min & 0 h & 0 min & 0/385 & 0 \% (référence) \\
+Baseline 30 min stricte & 30 min & 0 h & 0 min & 0/385 & 0 \% \\
 \bottomrule
 \end{tabular}
-\caption{Compromis gain/risque sur eval 2023-25 selon le plancher $T_{\min}$. Le sweet
-spot opérationnel est à $T_{\min} = 25$ : 251 h gagnées, 17 \% de risque, timer moyen 26 min.}
+\caption{Compromis gain/risque selon le plancher $T_{\min}$. Plus $T_{\min}$ est haut, moins
+de risque et moins de gain. À $T_{\min}=25$, on gagne 15,4 min en moyenne par alerte au prix
+de 17\% de risque résiduel.}
 \label{tab:sweep_tmin}
 \end{table}
 
-\paragraph{Lecture.} À $T_{\min} = 25$, on gagne en moyenne 15,4 min sur chaque alerte
-(soit 251 heures cumulées sur l'eval), tout en limitant le risque à 17 \%. C'est notre
-point d'opération recommandé. L'opérateur peut choisir un $T_{\min}$ plus haut ou plus
-bas selon sa tolérance au risque.
-
-\subsection{Détail par aéroport ($q = 0{,}95$, $T_{\min} = 25$)}
+\subsection{Détail par aéroport (à $q = 0{,}95$, $T_{\min} = 25$)}
 
 \begin{table}[H]
 \centering
 \small
 \begin{tabular}{lcccccc}
 \toprule
-\textbf{Aéroport} & \textbf{Nb alertes} & \textbf{Timer moyen} & \textbf{Gain/alerte} & \textbf{Gain total} & \textbf{CG manqués} & \textbf{Risque CG} \\
+\textbf{Aéroport} & \textbf{Nb al.} & \textbf{Timer moy.} & \textbf{Gain/al.} & \textbf{Gain total} & \textbf{CG manqués} & \textbf{Risque CG} \\
 \midrule
-Ajaccio  & 192 & 26,0 min & 11,5 min & 37 h & 7 / 43  & 16,28 \% \\
-Bastia   & 233 & 26,3 min & 15,9 min & 62 h & 9 / 122 &  7,38 \% \\
-Biarritz & 217 & 26,4 min & 12,7 min & 46 h & 7 / 55  & 12,73 \% \\
-Nantes   &  88 & 25,7 min & 16,0 min & 24 h & 7 / 26  & 26,92 \% \\
-Pise     & 243 & 26,1 min & 20,4 min & 83 h & 36 / 139 & 25,90 \% \\
+Ajaccio  & 192 & 26,0 min & 11,5 min & 37 h & 7 / 43   & 16,28 \% \\
+Bastia   & 233 & 26,3 min & 15,9 min & 62 h & 9 / 122  & \textbf{ 7,38 \%} \\
+Biarritz & 217 & 26,4 min & 12,7 min & 46 h & 7 / 55   & 12,73 \% \\
+Nantes   &  88 & 25,7 min & 16,0 min & 24 h & 7 / 26   & 26,92 \% \\
+Pise     & 243 & 26,1 min & 20,4 min & \textbf{83 h} & 36 / 139 & 25,90 \% \\
 \midrule
 \textbf{TOTAL} & \textbf{973} & \textbf{26,2 min} & \textbf{15,4 min} & \textbf{251 h} & \textbf{66 / 385} & \textbf{17,14 \%} \\
 \bottomrule
 \end{tabular}
-\caption{Détail par aéroport. Les profils diffèrent fortement selon la dynamique locale des
-orages. Pise (orages denses) donne le gain le plus élevé (83 h) mais aussi un risque marqué
-(26 \%). Bastia gagne 62 h avec seulement 7,4 \% de risque — le meilleur ratio. Nantes a peu
-d'alertes (88) mais un risque relatif élevé (7/26 = 27 \%).}
+\caption{Profils par aéroport. \textbf{Bastia} offre le meilleur ratio (7,4 \% de risque pour
+62 h de gain). \textbf{Pise} donne le gain absolu le plus élevé (83 h) mais aussi un risque
+marqué (26 \%) lié à la densité de ses orages. Nantes a un risque relatif élevé sur un petit
+échantillon.}
 \label{tab:by_airport}
-\end{table}
-
-\subsection{Effet de $q$ — Pareto frontier $(q, T_{\min})$}
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{ccccc}
-\toprule
-\textbf{$q$} & \textbf{$T_{\min}$} & \textbf{Gain total} & \textbf{Risque CG} & \textbf{Profil} \\
-\midrule
-0,85 & 25 & 260 h & 17,40 \% & agressif ($T_q$ court) \\
-0,95 & 25 & 251 h & 17,14 \% & équilibré (recommandé) \\
-0,99 & 25 & 234 h & 16,10 \% & prudent ($T_q$ long) \\
-\midrule
-0,95 & 20 & 365 h & 28,05 \% & plus de gain, plus de risque \\
-0,95 & 30 & 136 h &  8,57 \% & plus prudent, moins de gain \\
-\bottomrule
-\end{tabular}
-\caption{Le choix de $q$ (calibration de $T_q$) a un effet modeste : le plancher $T_{\min}$
-domine. Le levier opérationnel principal est $T_{\min}$.}
 \end{table}
 
 \subsection{Pourquoi le risque n'est pas à 0 \% : limites assumées}
 
-\begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Honnêteté scientifique}]
-La cible 2 \% du protocole officiel n'est pas atteinte. Plusieurs causes :
+\begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Limites du modèle pur}]
+La cible 2 \% du protocole officiel n'est pas atteinte avec ce modèle naïf. Causes :
 \begin{enumerate}[topsep=2pt]
-    \item \textbf{La confidence $S(30|X)$ n'est pas parfaite} : à un CG en milieu d'orage actif,
-    le modèle prédit $T_q$ court. Si le prochain CG arrive plus tard que $T_q$ par chance,
-    on lève prématurément $\to$ incident.
-    \item \textbf{La définition d'alerte dans l'eval est plus large que la règle stricte 30 min} :
-    108 gaps intra-alerte $> 30$ min existent dans l'eval (vs.\ 0 attendu dans la définition
-    stricte Météorage). Notre simulation lève à $T_{\min}=30$ dans ces cas alors que Météorage
-    maintient l'alerte ouverte. D'où le 8,57 \% résiduel même à $T_{\min} = 30$.
+    \item \textbf{Le modèle est agressif aux CG en milieu d'orage} : il prédit un $T_q$ court
+    parce que les gaps sont effectivement courts en moyenne. Mais sur \emph{certains} cas, le
+    prochain CG arrive plus tard que $T_q$ par chance → on lève prématurément.
+    \item \textbf{Pas de filtre de confiance opérationnel} : sans signal explicite \og ce CG
+    est-il le dernier ? \fg{}, on ne sait pas distinguer un CG terminal d'un CG de transition.
 \end{enumerate}
 
-\textbf{Pour atteindre $R < 2\,\%$} : il faudrait entraîner un \emph{classifieur secondaire
-dédié} à la tâche \og ce CG est-il le dernier de l'alerte ? \fg{} avec des features
-combinant $T_q$, $S(30|X)$, \texttt{rolling\_gap\_5}, \texttt{cg\_rank}, etc. Ce classifieur
-fournirait une confidence plus tranchée, qui filtrerait mieux les CG du milieu d'orage. C'est
-notre perspective principale d'amélioration.
+\textbf{Perspective principale d'amélioration} : entraîner un \textbf{classifieur secondaire}
+dédié à la cible \og est-ce le dernier CG ? \fg{}, avec features combinant $T_q$, $S(30|X)$,
+\texttt{rolling\_gap\_5}, \texttt{cg\_rank}. Le timer ne se déclencherait alors qu'aux CG
+identifiés comme probables terminaux, supprimant les lèvées prématurées en milieu d'orage.
 \end{tcolorbox}
 
 \subsection{Alignement avec le protocole officiel Data Battle}
 
 Notre simulation reprend exactement la mécanique du notebook officiel
-\texttt{Evaluation\_databattle\_meteorage.ipynb}, reproduite dans
-\texttt{Evaluation\_databattle\_weibull.ipynb} :
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item \textbf{Pareil} : 1 décision de levée par alerte, gain = $(\text{last\_lightning} + 30) - \text{levée\_prédite}$,
-    risque = nombre de CG <3 km arrivant après la levée prédite.
-    \item \textbf{Spécifique à notre approche} : nous simulons la mécanique \emph{temps réel}
-    (timer CG par CG, plancher $T_{\min}$) au lieu de la lecture \emph{post-hoc} du jury
-    (sweep $\theta$ sur la confidence). Les deux donnent des résultats similaires si on
-    aligne la confidence et le plancher.
+\texttt{Evaluation\_databattle\_meteorage.ipynb} (reproduit dans
+\texttt{Evaluation\_databattle\_weibull.ipynb}) :
+\begin{itemize}[topsep=2pt]
+    \item \textbf{Identique} : 1 décision de levée par alerte, baseline = dernier éclair
+    + 30 min, comptage des éclairs <3 km arrivant après la levée.
+    \item \textbf{Choix méthodologique} : nous mesurons sur les \textbf{CG seuls} (et non
+    sur CG+IC) car les IC ne sont pas dangereux au sol. Pour la baseline, on utilise
+    \texttt{last\_CG} + 30 (et non \texttt{last\_lightning} + 30).
 \end{itemize}
+
+% ===============================================================
+\section{Limites et perspectives}
+
+\paragraph{Limites assumées.}
+\begin{itemize}[topsep=2pt]
+    \item Données censurées à 30 min par construction d'une alerte.
+    \item Pas de données météo externes (vent, pression, humidité).
+    \item Calibration sur le test (idéalement 3 splits : train / calibration / test).
+    \item Cap à 30 min sur $T_q$ : filet de sécurité, mais bride aussi le gain potentiel.
+\end{itemize}
+
+\paragraph{Prochaines étapes.}
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{Classifieur secondaire \og dernier CG \fg{}} (priorité) — résoudrait le
+    risque résiduel à 17 \%.
+    \item Intégrer la météo externe via API Météo France / ECMWF.
+    \item Re-fit annuel automatisé pour absorber la dérive climatique.
+    \item Validation A/B en production (shadow mode 3-6 mois).
+    \item Tester le mode \texttt{ancillary} (paramètre $k$ variable selon $X$).
+\end{enumerate}
 
 % ===============================================================
 \section{Conclusion}
 
 \begin{tcolorbox}[colback=green!5,colframe=green!60!black,title=\textbf{En résumé}]
-\textbf{Ce qu'on a fait :} Weibull AFT entraîné par maximum de vraisemblance (gère la censure native) avec 17 variables contextuelles, dont le rythme passé de l'orage concentre 57\% du pouvoir prédictif. Calibration empirique robuste (winsorization + monotonicité) pour garantir la couverture annoncée. Vérification non-paramétrique indépendante par fonction de comptage.
+\textbf{Ce qu'on a fait :} un Weibull AFT entraîné par MLE avec gestion native de la censure
+30 min, 17 variables contextuelles (dont le rythme concentre 57 \% du pouvoir prédictif),
+calibration empirique robuste (winsorization + monotonicité), et une simulation opérationnelle
+réelle (timer CG par CG + plancher $T_{\min}$).
 
 \medskip
 
-\textbf{Ce qu'on gagne :}
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item À 10\% de risque : 16 min (gain de 14 min)
-    \item À 5\% de risque : 26 min (gain de 4 min)
-    \item À 1\% de risque : 30 min confirmées par l'analyse empirique
+\textbf{Ce qu'on gagne sur eval 2023-25} (973 alertes, 385 CG <3 km, $q = 0{,}95$) :
+\begin{itemize}[topsep=2pt]
+    \item Point équilibré ($T_{\min} = 25$) : \textbf{251 h gagnées}, 15,4 min en moyenne par
+    alerte, risque CG 17 \%.
+    \item Profils par aéroport très différents : Bastia 62 h / 7,4 \% (meilleur ratio), Pise
+    83 h / 26 \% (gain absolu max), Ajaccio 37 h / 16 \%, Biarritz 46 h / 13 \%, Nantes
+    24 h / 27 \%.
 \end{itemize}
 
 \medskip
 
-\textbf{Cohérence des 2 approches :} Weibull paramétrique et empirique non-paramétrique se rejoignent. La règle des 30 minutes de Météorage est \textbf{statistiquement bien dimensionnée} pour 1\% de risque résiduel. Le projet apporte un gain significatif pour les seuils relâchés (5\% et 10\%).
-
-\medskip
-
-\textbf{Évaluation sur eval 2023-25 — simulation opérationnelle réelle (voir section~\ref{sec:eval_ops}) :}
-
-Sur 973 alertes inédites avec 385 CG <3 km dangereux, à $q = 0{,}95$ avec un plancher
-opérationnel $T_{\min}$ :
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item \textbf{Point recommandé} ($T_{\min} = 25$ min) : \textbf{251 h gagnées}, timer
-    effectif moyen 26 min, risque CG \textbf{17,14 \%} (66/385).
-    \item Point prudent ($T_{\min} = 30$) : 136 h gain, 8,57 \% risque CG.
-    \item Point agressif ($T_{\min} = 20$) : 365 h gain, 28 \% risque CG.
-    \item Baseline 30 min Météorage stricte : 0 h / 0 \% (référence parfaite).
-\end{itemize}
-
-\textit{Détail par aéroport à $T_{\min} = 25$} : profils différents — Bastia 62 h / 7,4 \%
-(meilleur ratio), Pise 83 h / 26 \% (gain le plus élevé), Ajaccio 37 h / 16 \%, Biarritz
-46 h / 13 \%, Nantes 24 h / 27 \%.
-
-\textit{Limite assumée} : la cible 2 \% du protocole n'est pas atteinte avec la confidence
-$S(30|X)$ seule. Perspective principale : entraîner un classifieur secondaire dédié à la
-tâche \og ce CG est-il le dernier ? \fg{} pour mieux filtrer les CG du milieu d'orage.
+\textbf{Limite assumée :} le risque 17 \% reste au-dessus de la cible 2 \%. Le modèle naïf
+n'est pas déployable tel quel — il faut un classifieur secondaire \og dernier CG \fg{} pour
+filtrer les lèvées prématurées en milieu d'orage. Le gain potentiel (jusqu'à 953 h sans
+plancher) montre que le modèle a la prédictivité nécessaire ; il manque juste un signal de
+confiance opérationnel.
 \end{tcolorbox}
 
 % ===============================================================
 \appendix
-\section{Annexe : structure du notebook}
-
-Le notebook \texttt{weibull\_final.ipynb} est organisé en 19 sections :
-\begin{enumerate}[leftmargin=*,topsep=2pt]
-    \item Sommaire et imports
-    \item Théorie Weibull AFT
-    \item Setup et chargement
-    \item Exploration descriptive
-    \item Feature engineering
-    \item Gestion de la censure
-    \item Split intra-orage 85/15
-    \item Visualisation Kaplan-Meier
-    \item Weibull simple par aéroport
-    \item Weibull AFT général avec covariables
-    \item Weibull AFT spécifique par aéroport
-    \item Temps d'attente recommandé $T_q$
-    \item Validation Weibull vs Kaplan-Meier
-    \item Pourquoi pas une moyenne (5 baselines)
-    \item Importance des variables
-    \item Gradient Boosting hybride (diagnostic)
-    \item Calibration empirique robuste
-    \item $T_q$ calibré final
-    \item Vérification empirique non-paramétrique
-\end{enumerate}
-
 \section{Annexe : fichiers livrés}
-
-\begin{itemize}[leftmargin=*,topsep=2pt]
-    \item \texttt{weibull\_final.ipynb} : notebook complet (théorie + calibration train)
-    \item \texttt{Weibull\_final3km.ipynb} : évaluation sur eval, mesure dynamique CG / 3 km
-    \item \texttt{Evaluation\_databattle\_weibull.ipynb} : reproduction fidèle du protocole
-    officiel du Data Battle (sweep $\theta$ sur \texttt{predictions.csv})
-    \item \texttt{meteorage\_model.py} : module Python réutilisable (load, features, fit)
-    \item \texttt{app.py} : démo Streamlit interactive
-    \item \texttt{presentation\_oral.pptx} : présentation orale
-    \item \texttt{script\_oral.tex} : script complet de l'oral
-    \item \texttt{rapport\_final.tex} : ce document
+\begin{itemize}[topsep=2pt]
+    \item \texttt{weibull\_final.ipynb} : notebook de base (théorie + calibration)
+    \item \texttt{Weibull\_final3km.ipynb} : évaluation 3 km (mesure dynamique)
+    \item \texttt{Evaluation\_databattle\_weibull.ipynb} : reproduction du protocole officiel
+    \item \texttt{meteorage\_model.py} : module Python réutilisable
+    \item \texttt{app.py} : démo Streamlit (commande : \texttt{streamlit run app.py})
+    \item \texttt{presentation\_oral.pptx}, \texttt{script\_oral.tex}, \texttt{oral\_partie\_enrique.tex}
 \end{itemize}
 
 \end{document}
