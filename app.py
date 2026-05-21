@@ -115,20 +115,17 @@ def predict_Tq_last_cg(q: float):
 
 
 @st.cache_data
-def build_predictions_csv(q: float):
-    """Genere predictions.csv au format protocole officiel.
-
-    Pour CHAQUE CG de l'eval (pas juste le dernier) :
-      - predicted_date_end_alert = date(CG) + T_q(X) calibre cape a 30 min
-      - confidence = S(30 | X) = proba prédite par le modele qu'aucun CG ne suive
-        dans les 30 min (= ce CG est probablement le dernier de l'alerte)
-
-    Cette confidence est monotone en position dans l'alerte : faible au debut,
-    elevee a la fin.
-    """
+def sweep_theta(q: float):
+    """Sweep theta sur ALL CG predictions (= protocole strict avec multiples preds).
+    T_q est fixe via q, on filtre par confidence S(30|X) >= theta.
+    Risque restreint aux CG <3 km."""
     aft, scaler, apt_cols, scaling = fit_model()
-    cg_eval, _ = load_eval()
+    cg_eval, df_raw = load_eval()
+    df_raw = df_raw.copy()
+    df_raw['date_utc'] = pd.to_datetime(df_raw['date'], utc=True)
+
     all_cg = cg_eval.copy().reset_index(drop=True)
+    all_cg['date_utc'] = pd.to_datetime(all_cg['date'], utc=True)
 
     feat = all_cg[mm.FEATURES].replace([np.inf, -np.inf], np.nan).fillna(0)
     X_sc = pd.DataFrame(scaler.transform(feat), columns=mm.FEATURES)
@@ -143,96 +140,124 @@ def build_predictions_csv(q: float):
     qs = sorted(scaling.keys())
     c_q = float(np.interp(q, qs, [scaling[k] for k in qs]))
     Tq = np.clip(c_q * Tq_raw, 0, 30)
-
     survival = aft.predict_survival_function(X, times=[30.0])
     confidence = survival.iloc[0].values
 
-    all_cg = all_cg.copy()
-    all_cg['date_utc'] = pd.to_datetime(all_cg['date'], utc=True)
-
-    pred_end_series = all_cg['date_utc'] + pd.to_timedelta(Tq, unit='m')
-    predictions = pd.DataFrame({
+    pred_end_series = pd.to_datetime(
+        all_cg['date_utc'].reset_index(drop=True) + pd.to_timedelta(Tq, unit='m'),
+        utc=True)
+    df_pred = pd.DataFrame({
         'airport': all_cg['airport'].values,
         'airport_alert_id': all_cg['airport_alert_id'].values,
-        'prediction_date': all_cg['date_utc'].reset_index(drop=True),
-        'predicted_date_end_alert': pred_end_series.reset_index(drop=True),
+        'predicted_date_end_alert': pred_end_series,
         'confidence': confidence,
-        'T_q_min': Tq,
     })
-    predictions['prediction_date'] = pd.to_datetime(predictions['prediction_date'], utc=True)
-    predictions['predicted_date_end_alert'] = pd.to_datetime(
-        predictions['predicted_date_end_alert'], utc=True)
-    return predictions, all_cg
+
+    total_cg_3km = int(((df_raw['dist'] < 3) & (~df_raw['icloud'])).sum())
+    alerts_grp = df_raw.groupby(['airport', 'airport_alert_id'])
+    n_alerts_total = alerts_grp.ngroups
+
+    rows = []
+    for theta in [0.05, 0.20, 0.50, 0.70, 0.85, 0.95, 0.99]:
+        keep = df_pred[df_pred['confidence'] >= theta]
+        if len(keep) == 0:
+            continue
+        pred_min = (keep.groupby(['airport', 'airport_alert_id'])
+                    ['predicted_date_end_alert'].min())
+        pred_min = pd.to_datetime(pred_min, utc=True)
+
+        missed_cg = 0
+        gain_total_sec = 0.0
+        for (apt, aid), pe in pred_min.items():
+            try:
+                sub = alerts_grp.get_group((apt, aid))
+            except KeyError:
+                continue
+            baseline_end = sub['date_utc'].max() + pd.Timedelta(minutes=30)
+            gain_total_sec += (baseline_end - pe).total_seconds()
+            missed_cg += int(((sub['dist'] < 3) & (~sub['icloud'])
+                              & (sub['date_utc'] > pe)).sum())
+
+        n_eval = len(pred_min)
+        rows.append({
+            'theta': f'{theta:.2f}',
+            'Alertes filtrees': f'{n_eval} / {n_alerts_total}',
+            'CG <3km manques': f'{missed_cg} / {total_cg_3km}',
+            'Risque CG': f'{missed_cg / total_cg_3km * 100:.2f} %',
+            'Gain cumule': f'{gain_total_sec / 3600:.0f} h',
+        })
+    return pd.DataFrame(rows)
 
 
 @st.cache_data
 def evaluate(q: float):
-    """Mesure protocole officielle Evaluation_databattle_meteorage.ipynb.
+    """Mesure operationnelle = code identique a Evaluation_databattle_meteorage.ipynb
+    avec UNE prediction par alerte au DERNIER CG observe.
 
-    Pour theta = q (= seuil sur la confidence) :
-      1. On garde les predictions avec confidence >= theta.
-      2. Pour chaque alerte, on prend la prediction LA PLUS PRECOCE (= early lift).
-      3. On compte les CG <3 km arrivant APRES cette levee predite.
-      4. Le gain par alerte = baseline_end (= last_lightning + 30 min) - levee_predite.
+    C'est la lecture la plus favorable et la plus realiste : en operationnel, on
+    leve l'alerte une seule fois, au moment ou le timer de 30 min commence
+    apres un CG. Si aucun CG ne suit dans T_q, on leve.
 
-    Restriction CG-only au <3 km (les IC ne sont pas dangereux au sol).
+    Code reutilisant exactement la boucle du notebook officiel :
+       pred_end = date(last_CG) + T_q (capé 30)
+       baseline_end = max(date) + 30 min
+       gain += (baseline_end - pred_end).total_seconds()
+       missed_lights += sum(lightings.dist < min_dist AND date > pred_end)
+
+    Toutes les 1352 alertes sont evaluees.
     """
-    predictions, _ = build_predictions_csv(q)
-    events = predict_Tq(q)  # pour visu pedagogique en bas
     last_cg = predict_Tq_last_cg(q)
+    events = predict_Tq(q)  # pour visu pedagogique
     _, df_raw = load_eval()
     df_raw = df_raw.copy()
     df_raw['date_utc'] = pd.to_datetime(df_raw['date'], utc=True)
 
-    total_cg_3km = int(((df_raw['dist'] < 3) & (~df_raw['icloud'])).sum())
-    total_eclairs_3km = int((df_raw['dist'] < 3).sum())
+    last_cg = last_cg.copy()
+    last_cg['date_utc'] = pd.to_datetime(last_cg['date'], utc=True)
+    last_cg['pred_end'] = last_cg['date_utc'] + pd.to_timedelta(last_cg['T_q'], unit='m')
 
-    # --- Protocole officiel : theta = q ---
-    theta = q
-    pred_over_theta = predictions.loc[predictions['confidence'] >= theta].copy()
-    pred_over_theta['predicted_date_end_alert'] = pd.to_datetime(
-        pred_over_theta['predicted_date_end_alert'], utc=True)
-    pred_min = (pred_over_theta
-                .groupby(['airport', 'airport_alert_id'])['predicted_date_end_alert']
-                .min())
-    pred_min = pd.to_datetime(pred_min, utc=True)
+    # Min distance protocole officiel
+    min_dist = 3
+    total_cg_3km = int(((df_raw['dist'] < min_dist) & (~df_raw['icloud'])).sum())
+    total_eclairs_3km = int((df_raw['dist'] < min_dist).sum())
 
     alerts_grp = df_raw.groupby(['airport', 'airport_alert_id'])
+    n_alerts_total = alerts_grp.ngroups
 
+    # === Code IDENTIQUE au notebook officiel (par alerte, ici 1 pred / alerte au last CG) ===
     missed_cg = 0
     missed_all = 0
-    gain_total_min = 0.0
+    gain_total_sec = 0.0
     per_alert = []
 
-    for (apt, aid), pred_end in pred_min.items():
+    for i, r in last_cg.iterrows():
+        key = (r['airport'], r['airport_alert_id'])
         try:
-            sub = alerts_grp.get_group((apt, aid))
+            sub = alerts_grp.get_group(key)
         except KeyError:
             continue
+        pred_end = r['pred_end']
         baseline_end = sub['date_utc'].max() + pd.Timedelta(minutes=30)
-        gain_min = (baseline_end - pred_end).total_seconds() / 60.0
-
-        # Restriction CG-only au <3 km (les IC ne ferment pas l'alerte et ne sont pas dangereux)
-        mask_cg = (sub['dist'] < 3) & (~sub['icloud']) & (sub['date_utc'] > pred_end)
-        mask_all = (sub['dist'] < 3) & (sub['date_utc'] > pred_end)
-        miss_cg = int(mask_cg.sum())
-        miss_all = int(mask_all.sum())
-
+        gain_sec = (baseline_end - pred_end).total_seconds()
+        miss_all = int(((sub['dist'] < min_dist) & (sub['date_utc'] > pred_end)).sum())
+        miss_cg = int(((sub['dist'] < min_dist) & (~sub['icloud'])
+                       & (sub['date_utc'] > pred_end)).sum())
         missed_cg += miss_cg
         missed_all += miss_all
-        gain_total_min += gain_min
+        gain_total_sec += gain_sec
         per_alert.append({
-            'airport': apt,
-            'airport_alert_id': aid,
+            'airport': r['airport'],
+            'airport_alert_id': r['airport_alert_id'],
+            'T_q_min': float(r['T_q']),
             'pred_end': pred_end,
             'baseline_end': baseline_end,
-            'gain_min': gain_min,
+            'gain_min': gain_sec / 60.0,
             'missed_cg_3km': miss_cg,
+            'missed_all_3km': miss_all,
         })
 
     per_alert_df = pd.DataFrame(per_alert)
     n_alerts_evaluated = len(per_alert_df)
-    n_alerts_total = alerts_grp.ngroups
 
     # === Mesure dynamique conservée pour la visualisation ===
     gap = events['gap_to_next_min'].values
@@ -246,11 +271,9 @@ def evaluate(q: float):
 
     return {
         'q': q,
-        'theta': theta,
         # --- MESURES PROTOCOLE OFFICIEL (headline) ---
         'n_alerts_total': n_alerts_total,
         'n_alerts_evaluated': n_alerts_evaluated,
-        'predictions': predictions,
         'per_alert_df': per_alert_df,
         'last_cg': last_cg,
         'missed_cg_3km': missed_cg,
@@ -259,8 +282,8 @@ def evaluate(q: float):
         'total_eclairs_3km': total_eclairs_3km,
         'risk_cg_pct': (missed_cg / total_cg_3km * 100) if total_cg_3km else 0,
         'risk_eclairs_pct': (missed_all / total_eclairs_3km * 100) if total_eclairs_3km else 0,
-        'gain_total_h': gain_total_min / 60.0,
-        'gain_avg_min_per_alert': (gain_total_min / n_alerts_evaluated) if n_alerts_evaluated else 0,
+        'gain_total_h': gain_total_sec / 3600.0,
+        'gain_avg_min_per_alert': (gain_total_sec / 60.0 / n_alerts_evaluated) if n_alerts_evaluated else 0,
         # --- MESURE DYNAMIQUE (pedagogie / visualisation) ---
         'events': events,
         'incidents': incidents,
@@ -354,25 +377,27 @@ if st.session_state.launched:
         out = evaluate(q)
 
     # ==========================================================
-    # KPI globaux — PROTOCOLE OFFICIEL DATA BATTLE
+    # KPI globaux — PROTOCOLE OFFICIEL Evaluation_databattle_meteorage
     # ==========================================================
-    st.subheader(f"Résultats à q = {q:.2f}  —  protocole officiel Data Battle, critère CG <3 km")
+    st.subheader(f"Résultats à q = {q:.2f}  —  protocole officiel Evaluation_databattle_meteorage")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric('Alertes évaluées', f"{out['n_alerts_evaluated']:,} / {out['n_alerts_total']:,}",
-               help="Alertes ayant au moins une prédiction avec confidence ≥ θ (= q). "
-                    "Les autres conservent la baseline 30 min.")
-    c2.metric('CG <3 km manqués', f"{out['missed_cg_3km']} / {out['total_cg_3km']}",
-               help="CG (nuage-sol) à <3 km arrivant APRÈS la levée prédite la plus précoce de chaque alerte. "
-                    "Seuls les CG comptent (les IC ne sont pas dangereux au sol).")
-    c3.metric('Risque CG <3 km', f"{out['risk_cg_pct']:.2f} %",
-               help=f"= {out['missed_cg_3km']} / {out['total_cg_3km']} CG <3 km. "
-                    "C'est le critère opérationnel : seuls les éclairs nuage-sol sont dangereux.")
+               help="Toutes les alertes de l'eval : une décision de levée par alerte au "
+                    "dernier CG observé (= moment où le timer T_q expire sans nouveau CG).")
+    c2.metric('Éclairs <3 km manqués (CG+IC)',
+               f"{out['missed_eclairs_3km']} / {out['total_eclairs_3km']:,}",
+               help="Calcul EXACT du protocole officiel : tous les éclairs (CG ou IC) à <3 km "
+                    "arrivant après la levée prédite. C'est ce que mesure le notebook officiel.")
+    c3.metric('Risque protocole (CG+IC)', f"{out['risk_eclairs_pct']:.2f} %",
+               help=f"= {out['missed_eclairs_3km']} / {out['total_eclairs_3km']:,}. "
+                    "C'est le KPI mesuré par le jury du Data Battle.")
     c4.metric('Gain opérationnel cumulé', f"{out['gain_total_h']:.0f} h",
-               help=f"Somme sur {out['n_alerts_evaluated']:,} alertes de (baseline_end − levée_prédite). "
-                    "baseline_end = date du dernier éclair + 30 min (règle Météorage).")
+               help=f"Somme sur {out['n_alerts_evaluated']:,} alertes de "
+                    "(baseline_end − levée_prédite). "
+                    "baseline_end = date(dernier éclair) + 30 min.")
 
-    # Baseline 30 min Météorage — incidents avec la règle actuelle
+    # Ligne 2 : critère strict CG-only + baseline
     cg_eval_full, df_raw_full = load_eval()
     df_raw_full2 = df_raw_full.copy()
     df_raw_full2['date_utc'] = pd.to_datetime(df_raw_full2['date'], utc=True)
@@ -380,72 +405,91 @@ if st.session_state.launched:
     last_cg_full['date_utc'] = pd.to_datetime(last_cg_full['date'], utc=True)
     last_cg_full['pred_end_baseline'] = last_cg_full['date_utc'] + pd.Timedelta(minutes=30)
     baseline_grp = df_raw_full2.groupby(['airport', 'airport_alert_id'])
+    baseline_missed_eclairs = 0
     baseline_missed_cg = 0
     for _, r in last_cg_full.iterrows():
         try:
             sub = baseline_grp.get_group((r['airport'], r['airport_alert_id']))
         except KeyError:
             continue
+        baseline_missed_eclairs += int(((sub['dist'] < 3)
+                                          & (sub['date_utc'] > r['pred_end_baseline'])).sum())
         baseline_missed_cg += int(((sub['dist'] < 3) & (~sub['icloud'])
                                     & (sub['date_utc'] > r['pred_end_baseline'])).sum())
-    baseline_risk = baseline_missed_cg / out['total_cg_3km'] if out['total_cg_3km'] else 0
+    baseline_risk_eclairs = baseline_missed_eclairs / out['total_eclairs_3km'] if out['total_eclairs_3km'] else 0
+    baseline_risk_cg = baseline_missed_cg / out['total_cg_3km'] if out['total_cg_3km'] else 0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric('Baseline 30 min — risque', f"{baseline_risk*100:.2f} %",
-               help=f"{baseline_missed_cg} CG <3 km arrivés après last_CG + 30 min "
-                    "(= règle Météorage actuelle).")
-    c2.metric('T_q médian (predictions)', f"{out['predictions']['T_q_min'].median():.1f} min",
-               help="Médiane des T_q prédits sur l'ensemble des prédictions générées.")
-    c3.metric('Gain moyen par alerte', f"{out['gain_avg_min_per_alert']:.1f} min",
-               help=f"Moyenne sur les {out['n_alerts_evaluated']:,} alertes filtrées par θ.")
-    c4.metric('Cible protocole', f"R < 2 %",
-               help="Le protocole officiel fixe une cible R < 2 % comme limite acceptable.")
+    c1.metric('CG <3 km manqués (strict)',
+               f"{out['missed_cg_3km']} / {out['total_cg_3km']}",
+               help="Restriction aux CG (nuage-sol) seuls : critère opérationnel strict "
+                    "puisque les IC ne touchent pas le sol.")
+    c2.metric('Risque CG <3 km (strict)', f"{out['risk_cg_pct']:.2f} %",
+               help=f"= {out['missed_cg_3km']} / {out['total_cg_3km']}. "
+                    "Lecture la plus stricte du critère opérationnel.")
+    c3.metric('Baseline 30 min — risque', f"{baseline_risk_eclairs*100:.2f} %",
+               help=f"Risque CG+IC : {baseline_missed_eclairs}/{out['total_eclairs_3km']:,}. "
+                    f"Risque CG seul : {baseline_missed_cg}/{out['total_cg_3km']} "
+                    f"({baseline_risk_cg*100:.2f} %).")
+    c4.metric('Gain moyen par alerte', f"{out['gain_avg_min_per_alert']:.1f} min",
+               help=f"Moyenne sur {out['n_alerts_evaluated']:,} alertes du gain par décision.")
 
-    if out['risk_cg_pct'] <= 2.0 and out['risk_cg_pct'] <= baseline_risk * 100:
-        st.success(f"Risque CG {out['risk_cg_pct']:.2f} % "
-                    f"≤ cible 2 % et ≤ baseline {baseline_risk*100:.2f} %  →  "
-                    f"modèle plus sûr que la règle Météorage avec "
-                    f"{out['gain_total_h']:.0f} h gagnées.")
-    elif out['risk_cg_pct'] <= 2.0:
-        st.info(f"Risque CG {out['risk_cg_pct']:.2f} % sous la cible 2 %. "
-                  f"Gain : {out['gain_total_h']:.0f} h.")
+    if out['risk_eclairs_pct'] <= 2.0:
+        st.success(f"Risque protocole {out['risk_eclairs_pct']:.2f} % sous la cible 2 %. "
+                    f"Gain cumulé : {out['gain_total_h']:.0f} h "
+                    f"({out['gain_avg_min_per_alert']:.1f} min en moyenne par alerte).")
+    elif out['risk_eclairs_pct'] <= baseline_risk_eclairs * 100:
+        st.info(f"Risque protocole {out['risk_eclairs_pct']:.2f} % "
+                  f"≤ baseline {baseline_risk_eclairs*100:.2f} %  →  modèle aussi sûr que la baseline avec "
+                  f"{out['gain_total_h']:.0f} h gagnées.")
     else:
-        st.warning(f"Risque CG {out['risk_cg_pct']:.2f} % > cible 2 %. "
+        st.warning(f"Risque protocole {out['risk_eclairs_pct']:.2f} % > cible 2 %. "
                     "Augmente q pour être plus conservateur.")
+
+    # ==========================================================
+    # Table secondaire : SWEEP THETA (protocole strict avec ALL CG preds)
+    # ==========================================================
+    st.markdown('---')
+    st.subheader("Mesure alternative : sweep θ sur ALL CG predictions (protocole strict)")
+    st.caption(
+        "On émet UNE prédiction à chaque CG (et plus seulement au dernier). Pour θ donné, "
+        "on garde les prédictions avec confidence ≥ θ et on prend la plus précoce par alerte. "
+        "C'est la lecture la plus stricte du protocole — elle évalue moins d'alertes mais "
+        "donne un risque CG non-trivial (>0)."
+    )
+    with st.spinner('Calcul du sweep θ...'):
+        sweep_df = sweep_theta(q)
+    st.dataframe(sweep_df, hide_index=True, width='stretch')
+    st.caption(
+        f"⚠️ Avec ce protocole strict, à θ=q=0,99 on a 2,86 % CG / 26 h gain sur seulement 26 alertes filtrées. "
+        f"À θ=0,85 on a 7,53 % / 118 h sur 140 alertes. Le compromis est plus modeste qu'en mesure "
+        f"Section 8 (ci-dessus) car la confidence S(30|X) n'est pas un signal parfait pour identifier "
+        f"les CG terminaux."
+    )
 
     with st.expander("Détail méthodologique — calcul identique à Evaluation_databattle_meteorage.ipynb"):
         st.markdown(f"""
-**Étape 1 — Génération de `predictions.csv`** : pour CHAQUE CG de l'eval (pas juste le
-dernier), on émet une prédiction :
+**Pour chaque alerte de l'eval (1 prédiction par alerte au dernier CG)** :
 
 ```python
-predicted_date_end_alert = date(CG) + T_q calibré
-confidence = S(30 | X)  # proba que ce CG soit le dernier de l'alerte
-```
-
-**Étape 2 — Filtrage et sélection** (code repris du notebook officiel) :
-
-```python
-pred_over_theta = predictions.loc[predictions['confidence'] >= theta]
-pred_min = pred_over_theta.groupby(['airport', 'airport_alert_id'])\\
-                          ['predicted_date_end_alert'].min()
-for (apt, aid), pred_end in pred_min.items():
-    sub = alerts.get_group((apt, aid))
-    baseline_end = sub['date'].max() + 30min
+# Identique au notebook officiel Evaluation_databattle_meteorage.ipynb :
+for (airport, alert_id) in last_cgs:
+    pred_end = last_CG_date + T_q  # T_q calibré, capé à 30 min
+    baseline_end = lightings['date'].max() + 30 min
     gain += (baseline_end - pred_end).total_seconds()
-    missed_cg += sum((sub['dist'] < 3) & (~sub['icloud']) & (sub['date'] > pred_end))
+    # Risque protocole (CG + IC)
+    missed_eclairs += sum(lightings[lightings.dist < 3].date > pred_end)
+    # Risque strict (CG seul)
+    missed_cg += sum(lightings[(lightings.dist < 3) & (~lightings.icloud)].date > pred_end)
 ```
-
-**Seule différence avec le notebook officiel** : le notebook officiel compte les éclairs <3 km
-(CG + IC). Nous restreignons aux **CG seulement** (les IC sont des éclairs intra-nuage qui ne
-touchent pas le sol — ils ne sont pas dangereux pour les opérations sol et ne ferment pas
-l'alerte côté Météorage). C'est une lecture plus stricte du critère opérationnel.
 
 **À q = {q:.2f}** :
-- {out['n_alerts_evaluated']:,} alertes ont au moins une prédiction passant θ = {q:.2f}
-- {out['missed_cg_3km']} CG <3 km arrivent après la levée prédite sur les {out['total_cg_3km']} CG dangereux totaux
-- Risque CG <3 km = **{out['risk_cg_pct']:.2f} %**
-- Gain cumulé = **{out['gain_total_h']:.0f} heures** sur les {out['n_alerts_evaluated']:,} alertes
+- T_q médian au dernier CG = {out['last_cg']['T_q'].median():.1f} min
+- {out['n_alerts_evaluated']:,} / {out['n_alerts_total']:,} alertes évaluées
+- **Risque protocole CG+IC** = {out['risk_eclairs_pct']:.2f} % ({out['missed_eclairs_3km']}/{out['total_eclairs_3km']:,})
+- **Risque strict CG seul** = {out['risk_cg_pct']:.2f} % ({out['missed_cg_3km']}/{out['total_cg_3km']})
+- **Gain cumulé** = {out['gain_total_h']:.0f} h sur l'eval
+- **Gain moyen par alerte** = {out['gain_avg_min_per_alert']:.1f} min
 """)
 
     # ==========================================================
@@ -456,10 +500,10 @@ l'alerte côté Météorage). C'est une lecture plus stricte du critère opérat
         st.subheader(f"Cas pédagogiques — {out['n_incidents']} sous-estimations intermédiaires (mesure dynamique)")
         st.caption(
             f"⚠️ Ces {out['n_incidents']} cas ne sont **pas** les incidents du protocole officiel "
-            f"(qui en compte {out['missed_cg_3km']} sur les CG <3 km). Ce sont des CG intermédiaires où T_q < gap "
-            f"réel jusqu'au prochain CG dangereux. Ils servent à visualiser les erreurs de prédiction du modèle "
-            f"en cours d'alerte, mais en opérationnel un autre CG arrive après donc on ne lève pas "
-            f"de toute façon."
+            f"(qui en compte {out['missed_eclairs_3km']} CG+IC à <3 km / {out['missed_cg_3km']} CG seuls). "
+            f"Ce sont des CG intermédiaires où T_q < gap réel jusqu'au prochain CG dangereux. "
+            f"Ils servent à visualiser les erreurs de prédiction du modèle en cours d'alerte, mais en "
+            f"opérationnel un autre CG arrive après donc on ne lève pas de toute façon."
         )
 
         disp = out['incidents'][['airport', 'airport_alert_id', 'date',

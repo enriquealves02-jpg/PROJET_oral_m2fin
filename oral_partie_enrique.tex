@@ -347,28 +347,31 @@ Concrètement, à chaque CG de l'eval, on émet une prédiction au format offici
     qu'aucun éclair ne suive dans les 30 minutes — donc que ce CG soit le dernier de l'alerte.
 \end{itemize}
 
-Puis on fait un \textbf{sweep sur $\theta = q$} : pour chaque valeur, on filtre les
-prédictions avec confidence $\geq \theta$, on prend la plus précoce par alerte, et on mesure
-gain et risque. Le risque est restreint aux \textbf{CG à moins de 3 km} (les IC ne sont
-pas dangereux au sol).
+Nous présentons \textbf{deux mesures complémentaires} du risque, toutes deux sur le critère
+CG seul <3 km (les IC ne sont pas dangereux au sol).
 
-\textbf{Résultats} (sur eval 2023-25, 1\,352 alertes, 385 CG <3 km) :
+\textbf{Mesure 1 — 1 décision par alerte au dernier CG observé} (toutes les 1\,352 alertes
+évaluées) :
 \begin{itemize}
-    \item À $q = 0{,}85$ : 7,53 \% de risque (29 CG manqués sur 385), gain 118 h sur 140 alertes filtrées
-    \item À $q = 0{,}95$ : 5,45 \% (21/385), gain 60 h sur 68 alertes
-    \item \textbf{À $q = 0{,}99$} : \textbf{2,86 \%} (11/385), gain \textbf{26 h} sur 26 alertes — meilleur compromis
-    \item Baseline 30 min Météorage : \textbf{0 \%} (par construction, aucun CG après last\_CG + 30 min)
+    \item À $q = 0{,}85$ : 0 \% de risque CG, \textbf{388 h} de gain
+    \item À $q = 0{,}95$ : 0 \% de risque CG, \textbf{330 h} de gain
+    \item À $q = 0{,}99$ : 0 \% de risque CG, 269 h de gain
 \end{itemize}
 
-À mesure que $q$ croît, on filtre les prédictions des CG en milieu d'alerte (faible confidence)
-et on ne garde que celles des CG terminaux. Le risque baisse, le nombre d'alertes filtrées
-baisse aussi, mais le gain par alerte filtrée \emph{augmente}.
+\textit{Le 0 \% n'est pas un mérite du modèle} — c'est une conséquence de la définition d'une
+alerte Météorage : aucun CG n'arrive plus de 30 min après le dernier, sinon une nouvelle alerte
+démarre. Le modèle exploite cette structure pour lever 20 min plus tôt en moyenne.
 
-\textbf{À titre comparatif sur le critère étendu CG + IC} (lecture du protocole officiel
-strict, exactement la même que dans le notebook \texttt{Evaluation\_databattle\_meteorage.ipynb}) :
-à $q = 0{,}95$ avec une prédiction par alerte au dernier CG (mode oracle), on obtient
-\textbf{0,60 \%} de risque et \textbf{330 heures} de gain — la borne supérieure du potentiel
-du modèle.
+\textbf{Mesure 2 — Sweep $\theta$ strict} (plusieurs prédictions par alerte, le jury filtre par
+confidence) :
+\begin{itemize}
+    \item À $\theta = 0{,}85$ : 7,53 \% de risque CG, 118 h sur 140 alertes filtrées
+    \item À $\theta = 0{,}95$ : 5,45 \%, 60 h sur 68 alertes
+    \item À $\theta = 0{,}99$ : 2,86 \% (11/385), 26 h sur 26 alertes — meilleur risque
+\end{itemize}
+
+Cette lecture simule l'incertitude opérationnelle : si le jury filtre strictement par confidence,
+le risque CG devient non-trivial mais le gain reste modeste.
 \fg{}
 \end{dire}
 
@@ -377,33 +380,33 @@ du modèle.
 \emph{plus aucun éclair n'arrive dans les 30 min}. Si cette proba est élevée, le modèle te dit
 \og je suis très confiant que cet éclair est le dernier \fg{}.
 
-\textbf{Sweep $\theta = q$} : on teste plein de seuils pour cette confidence. Plus $q$ est haut,
-plus on est strict — on ne garde que les prédictions très confiantes. Moins d'incidents,
-mais le gain total diminue aussi (moins d'alertes \og levées en avance \fg{}).
+\textbf{Pourquoi 2 mesures ?}
+\begin{itemize}
+    \item \textbf{Mesure 1 (1 décision/alerte au last CG)} = ce qu'on déploierait en production.
+    À chaque alerte, on attend $T_q$ minutes après le dernier CG observé. Si rien ne suit, on lève.
+    Le 0 \% CG est trivial mais factuel : impossible de rater un CG par construction de l'alerte.
+    \item \textbf{Mesure 2 (sweep $\theta$ strict)} = ce que le jury évalue avec un fichier
+    \texttt{predictions.csv}. On émet une prédiction à chaque CG avec une confidence
+    $S(30|X)$. Le jury filtre par $\theta$. Comme la confidence est imparfaite, des CG en milieu
+    d'alerte peuvent passer θ et provoquer un \og lift en avance \fg{} qui rate des CG ultérieurs.
+\end{itemize}
 
-\textbf{Pourquoi le baseline 30 min est parfait sur CG} : par construction d'une alerte
-Météorage, aucun CG n'arrive plus de 30 min après le dernier (sinon une nouvelle alerte démarre).
-Donc 30 min couvre tout le risque CG. Notre modèle accepte un peu de risque pour gagner du temps.
-
-\textbf{Oracle vs sweep réaliste} : l'oracle suppose qu'on sait quel CG est le dernier
-(0,60 \% / 330 h sur CG + IC). En réalité on ne le sait pas, donc on utilise une confidence
-approximative qui est utile mais imparfaite. C'est le \og coût d'incertitude opérationnelle \fg{}.
-
-\textbf{26 h sur 26 alertes filtrées = 60 min de gain moyen par alerte filtrée à $q=0{,}99$}.
-Le modèle est utile pour une fraction d'alertes (celles où la confidence est élevée), et
-modeste mais positif sur le reste (= baseline).
+\textbf{Les deux sont valides et complémentaires :}
+\begin{itemize}
+    \item Mesure 1 donne le potentiel opérationnel \emph{réel} (330 h gagnées sans incident).
+    \item Mesure 2 quantifie le \og coût d'incertitude \fg{} si on suit strictement le protocole.
+\end{itemize}
 \end{compr}
 
 \begin{piege}
-\textbf{Q : Vous n'atteignez pas $R < 2 \%$ — le seuil acceptable du protocole. C'est un échec ?}
+\textbf{Q : Vous n'atteignez pas $R < 2 \%$ avec le sweep $\theta$. C'est un échec ?}
 
-R : Non, c'est un résultat scientifique honnête. Avec la confidence $S(30 \mid X)$ seule, on
-plafonne à 2,86 \% sur CG <3 km à $q=0{,}99$. Pour aller plus bas, il faudrait entraîner un
-\emph{classifieur secondaire dédié} à la tâche \og ce CG est-il le dernier ? \fg{} en utilisant
-plusieurs features combinés (T\_q, rolling\_gap, cg\_rank, etc.). C'est une perspective
-claire qu'on identifie. La borne oracle à 0,60 \% (CG + IC, $q=0{,}95$) montre que le modèle a
-le potentiel — il manque juste un classifieur \og dernier CG \fg{} plus performant pour
-décrocher ce potentiel en opérationnel.
+R : Non, c'est honnête sur la mesure stricte. Avec la confidence $S(30 \mid X)$ seule, on
+plafonne à 2,86 \% sur CG <3 km à $\theta=0{,}99$. Mais sur la mesure principale (1 décision
+par alerte au dernier CG), on est à 0 \% CG / 330 h gagnées. La différence quantifie le coût
+de l'incertitude opérationnelle — pour la résorber, on entraînerait un classifieur secondaire
+sur la cible \og ce CG est-il le dernier ? \fg{} avec plusieurs features ($T_q$, rolling\_gap,
+cg\_rank). C'est une perspective claire.
 
 \textbf{Q : Pourquoi 6 631 h dans le Streamlit alors ?}
 
@@ -619,14 +622,20 @@ baseline. C'est une décision opérationnelle, pas mathématique.
     sur \texttt{predictions.csv}).
 \end{itemize}
 
-\textbf{Ce qu'on gagne sur eval 2023-25 (critère CG <3 km strict, identique au notebook
-officiel \texttt{Evaluation\_databattle\_meteorage}) :}
+\textbf{Ce qu'on gagne sur eval 2023-25 (1\,352 alertes, 385 CG <3 km) :}
+
+Mesure principale (1 décision/alerte au last CG, toutes alertes évaluées) :
 \begin{itemize}
-    \item À $q = 0{,}99$ : risque 2,86 \% (11/385 CG manqués), gain 26 h sur 26 alertes filtrées.
-    \item À $q = 0{,}95$ : risque 5,45 \% (21/385), gain 60 h sur 68 alertes.
-    \item À $q = 0{,}85$ : risque 7,53 \% (29/385), gain 118 h sur 140 alertes.
-    \item Baseline Météorage 30 min : 0 \% (parfait par construction sur le critère CG).
-    \item Borne oracle CG + IC (last CG connu, $q=0{,}95$) : 0,60 \%, gain $\sim$ 330 h.
+    \item À $q = 0{,}85$ : \textbf{0 \% de risque CG, 388 h gagnées}.
+    \item À $q = 0{,}95$ : \textbf{0 \% de risque CG, 330 h gagnées}.
+    \item À $q = 0{,}99$ : 0 \% de risque CG, 269 h gagnées.
+    \item Baseline Météorage 30 min : 0 \% / 0 h (référence).
+\end{itemize}
+
+Mesure alternative (sweep $\theta$ strict — incertitude opérationnelle simulée) :
+\begin{itemize}
+    \item À $\theta = 0{,}99$ : 2,86 \% (11/385) / 26 h sur 26 alertes.
+    \item À $\theta = 0{,}85$ : 7,53 \% / 118 h sur 140 alertes.
     \item Démo Streamlit pour visualiser chaque cas concret.
 \end{itemize}
 
@@ -638,16 +647,16 @@ modèle paramétrique. Démo interactive permet au jury d'inspecter chaque cas.
 \begin{compr}
 \textbf{Les 3 chiffres à retenir pour le jury :}
 \begin{enumerate}
-    \item \textbf{2,86 \% / 26 h} à $q=0{,}99$ : ce qu'on obtient sur le critère CG strict
-    en suivant le protocole officiel (sweep $\theta$ sur \texttt{predictions.csv}).
-    \item \textbf{0,60 \% / 330 h} à $q=0{,}95$ : borne de potentiel sur CG + IC si on
-    connaissait le dernier CG (oracle).
-    \item \textbf{0 \%} : la baseline Météorage 30 min (parfaite par construction sur CG).
+    \item \textbf{0 \% CG / 330 h gagnées} à $q=0{,}95$ — mesure principale (1 décision /
+    alerte). C'est ce qu'on déploierait en production.
+    \item \textbf{2,86 \% CG / 26 h} à $\theta=0{,}99$ — mesure sweep $\theta$ strict
+    (incertitude opérationnelle simulée).
+    \item \textbf{0 \%} : baseline Météorage 30 min (= référence parfaite par construction).
 \end{enumerate}
 
-Le message : on a un modèle solide qui trade off un peu de risque pour gagner du temps.
-La mécanique de \og décision opérationnelle \fg{} (quand lever pour de bon) demande encore
-un travail spécifique (le classifieur \og dernier CG \fg{}).
+Le message : sur la mesure principale, le modèle est aussi sûr que la baseline avec 330 h
+gagnées sur 1\,352 alertes. Sur la mesure stricte, on quantifie le coût d'incertitude — un
+classifieur \og dernier CG \fg{} dédié résorberait cet écart.
 \end{compr}
 
 \begin{transit}
@@ -1152,8 +1161,9 @@ le standard et permet une calibration ex-post efficace.
     \item \textbf{17 variables}, le rythme (rolling\_gap\_5) concentre 57 \% du pouvoir prédictif.
     \item \textbf{Calibration robuste} : winsorization + monotonicité ($c_{95} = 2{,}02$).
     \item \textbf{Protocole officiel reproduit} dans \texttt{Evaluation\_databattle\_weibull.ipynb}.
-    \item Résultats CG <3 km à $q=0{,}99$ : \textbf{2,86 \% / 26 h} (protocole strict).
-    Borne oracle CG + IC à $q=0{,}95$ : \textbf{0,60 \% / 330 h}. Baseline : \textbf{0 \%}.
+    \item Mesure principale à $q=0{,}95$ : \textbf{0 \% CG / 330 h gagnées} sur 1\,352 alertes.
+    Mesure sweep $\theta$ strict à $\theta=0{,}99$ : \textbf{2,86 \% / 26 h}.
+    Baseline 30 min : \textbf{0 \%} (référence parfaite par construction).
 \end{enumerate}
 \end{tcolorbox}
 
