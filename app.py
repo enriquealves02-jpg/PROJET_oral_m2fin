@@ -90,9 +90,35 @@ def predict_Tq(q: float):
 
 
 @st.cache_data
+def predict_Tq_last_cg(q: float):
+    """T_q calibré (capé 30 min) pour le DERNIER CG de chaque alerte.
+    C'est ce CG qui déclenche la vraie levée d'alerte en opérationnel."""
+    aft, scaler, apt_cols, scaling = fit_model()
+    cg_eval, _ = load_eval()
+    last_cg = cg_eval[cg_eval['is_last']].copy().reset_index(drop=True)
+
+    feat = last_cg[mm.FEATURES].replace([np.inf, -np.inf], np.nan).fillna(0)
+    X_sc = pd.DataFrame(scaler.transform(feat), columns=mm.FEATURES)
+    apt_dum = pd.get_dummies(last_cg['airport'], prefix='apt', drop_first=True).astype(float)
+    for col in apt_cols:
+        if col not in apt_dum.columns:
+            apt_dum[col] = 0.0
+    apt_dum = apt_dum[apt_cols].reset_index(drop=True)
+    X = pd.concat([X_sc.reset_index(drop=True), apt_dum], axis=1)
+
+    Tq_raw = aft.predict_percentile(X, p=1.0 - q).values
+    qs = sorted(scaling.keys())
+    c_q = float(np.interp(q, qs, [scaling[k] for k in qs]))
+    Tq = np.clip(c_q * Tq_raw, 0, 30)
+    last_cg['T_q'] = Tq
+    return last_cg
+
+
+@st.cache_data
 def evaluate(q: float):
     """Mesure le risque opérationnel + retourne la liste des incidents."""
     events = predict_Tq(q)
+    last_cg = predict_Tq_last_cg(q)
     _, df_raw = load_eval()
     total_cg_3km = int(((df_raw['dist'] < 3) & (~df_raw['icloud'])).sum())
 
@@ -106,9 +132,15 @@ def evaluate(q: float):
     incidents['ecart_min'] = incidents['gap_to_next_min'] - incidents['T_q']
     incidents = incidents.sort_values('ecart_min', ascending=False).reset_index(drop=True)
 
+    # Gain opérationnel par alerte (une lever par alerte au dernier CG)
+    gain_per_alert_min = np.clip(30 - last_cg['T_q'].values, 0, None)
+    n_alerts = len(last_cg)
+
     return {
         'q': q,
         'events': events,
+        'last_cg': last_cg,
+        'n_alerts': n_alerts,
         'incidents': incidents,
         'n_incidents': len(incidents),
         'n_levees_avant_prochain': int(levee_avant_prochain.sum()),
@@ -116,7 +148,11 @@ def evaluate(q: float):
         'risque_reel': len(incidents) / total_cg_3km if total_cg_3km else 0,
         'risque_conditionnel': (len(incidents) / int(levee_avant_prochain.sum())
                                   if levee_avant_prochain.sum() else 0),
-        'gain_total_min': float((30 - events['T_q']).clip(lower=0).sum()),
+        # Gain opérationnel : sur les n_alerts alertes de l'eval, somme des (30 - T_q au last CG)
+        'gain_operationnel_total_min': float(gain_per_alert_min.sum()),
+        'gain_operationnel_avg_min': float(gain_per_alert_min.mean()) if n_alerts else 0,
+        # Gain dynamique pédagogique (somme à chaque CG, ne reflète PAS le gain opérationnel réel)
+        'gain_dynamique_total_min': float((30 - events['T_q']).clip(lower=0).sum()),
     }
 
 
@@ -225,13 +261,29 @@ if st.session_state.launched:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric('Baseline 30 min — risque', f"{baseline_risk*100:.2f} %",
                help=f"{baseline_incidents} CG <3 km dont le gap intra-alerte dépasse 30 min")
-    c2.metric('Modèle T_q médian', f"{out['events']['T_q'].median():.1f} min",
-               help='Médiane des T_q prédits sur les 17 037 CG')
-    gain_h_per_event = out['gain_total_min'] / len(out['events'])
-    c3.metric('Gain moyen par CG', f"{gain_h_per_event:.1f} min",
-               help="Économie moyenne par CG par rapport aux 30 min de Météorage")
-    c4.metric('Gain total cumulé', f"{out['gain_total_min']/60:.0f} h",
-               help="Somme des (30 - T_q) sur tous les CG")
+    c2.metric('Modèle T_q médian (last CG)', f"{out['last_cg']['T_q'].median():.1f} min",
+               help=f"Médiane des T_q prédits au DERNIER CG de chaque alerte ({out['n_alerts']} alertes). "
+                    "C'est ce CG qui déclenche la vraie levée d'alerte en opérationnel.")
+    c3.metric('Gain moyen par alerte', f"{out['gain_operationnel_avg_min']:.1f} min",
+               help=f"Sur {out['n_alerts']} alertes : moyenne de (30 - T_q au last CG). "
+                    "C'est l'économie moyenne par décision opérationnelle.")
+    c4.metric('Gain opérationnel cumulé', f"{out['gain_operationnel_total_min']/60:.0f} h",
+               help=f"Sur {out['n_alerts']} alertes, somme des (30 - T_q au last CG). "
+                    "= ce qu'on gagne réellement sur la durée de l'eval, "
+                    "compatible avec le protocole officiel Data Battle.")
+
+    with st.expander("Pourquoi pas le gain à chaque CG ?"):
+        gain_dyn_h = out['gain_dynamique_total_min'] / 60
+        st.markdown(
+            f"En sommant `(30 − T_q)` sur les **{len(out['events']):,} CG** non-terminaux, "
+            f"on obtient **{gain_dyn_h:.0f} h** — c'est une mesure dynamique pédagogique qui "
+            f"compte une 'économie' à chaque CG. Mais en opérationnel, **on ne lève l'alerte qu'une "
+            f"fois par alerte** (au dernier CG observé). Le bon gain est donc calculé sur les "
+            f"**{out['n_alerts']} alertes** : {out['gain_operationnel_total_min']/60:.0f} h "
+            f"({out['gain_operationnel_avg_min']:.1f} min en moyenne par alerte). "
+            f"Ce chiffre est cohérent avec le protocole officiel reproduit dans "
+            f"`Evaluation_databattle_weibull.ipynb`."
+        )
 
     if out['n_incidents'] == 0:
         st.success("Aucun incident détecté à ce niveau de q.")
@@ -432,12 +484,13 @@ adaptée au critère 3 km.
     # ==========================================================
     st.markdown('---')
     st.subheader("Synthèse par aéroport")
-    by_apt = out['events'].groupby('airport').agg(
-        n_cg=('cg_rank', 'count'),
-        T_q_median=('T_q', lambda s: round(s.median(), 2)),
-        gain_total_h=('T_q', lambda s: round((30 - s).clip(lower=0).sum() / 60, 1)),
+    # Gain opérationnel agrégé par aéroport via last_cg
+    by_apt = out['last_cg'].groupby('airport').agg(
+        n_alertes=('T_q', 'count'),
+        T_q_median_last_min=('T_q', lambda s: round(s.median(), 2)),
+        gain_operationnel_h=('T_q', lambda s: round((30 - s).clip(lower=0).sum() / 60, 1)),
     )
-    inc_by_apt = out['incidents'].groupby('airport').size().rename('incidents')
+    inc_by_apt = out['incidents'].groupby('airport').size().rename('incidents_pedago')
     by_apt = by_apt.join(inc_by_apt).fillna(0)
-    by_apt['incidents'] = by_apt['incidents'].astype(int)
+    by_apt['incidents_pedago'] = by_apt['incidents_pedago'].astype(int)
     st.dataframe(by_apt, width='stretch')
