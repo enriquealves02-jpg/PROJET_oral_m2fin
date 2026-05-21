@@ -314,7 +314,7 @@ def empirical_risk():
 # ---------------------------------------------------------
 st.title("Battle Météorage — Weibull AFT, critère opérationnel CG / 3 km")
 
-with st.expander("Comprendre le modèle et la mesure d'erreur", expanded=True):
+with st.expander("Plan : trois mesures complémentaires (A, B, C)", expanded=True):
     st.markdown("""
 **Le modèle Weibull AFT en production :**
 
@@ -325,22 +325,15 @@ on lève. Sinon, le compteur est remis à zéro au nouveau CG.
 C'est la même mécanique que la règle Météorage 30 min, mais avec **T_q adapté au contexte**
 de chaque éclair (rythme, distance, intensité, saison).
 
-**Mesure opérationnelle (= protocole officiel Data Battle, headline) :**
+**On évalue le modèle selon 3 mesures complémentaires :**
 
-Une fois l'alerte fermée naturellement (= 30 min sans nouveau CG), on a observé une décision
-de levée par alerte au dernier CG. On compte :
-- **Incident** : un éclair (CG ou IC) à <3 km de l'aéroport arrivant **après notre levée prédite**.
-- **Risque protocole** : nombre d'incidents / total des éclairs <3 km dans l'eval (1 995).
-- **Gain par alerte** : baseline_end (= last_éclair + 30 min) − levée_prédite (= last_CG + T_q).
+| Mesure | Question répondue | Affichage |
+|---|---|---|
+| **A. Dynamique** | "Où le modèle se trompe-t-il en cours d'alerte ?" | Section pédagogique en bas (timeline d'incidents) |
+| **B. Opérationnelle** | "Que gagne-t-on en production ?" | **Headline en haut** (KPI principaux) |
+| **C. Protocole sweep θ** | "Que mesure le jury en suivant strictement le protocole ?" | Table sweep θ au milieu |
 
-C'est exactement ce que mesure la Section 8 du notebook *Weibull_final3km.ipynb* et la
-procédure de l'officiel *Evaluation_databattle_meteorage.ipynb*.
-
-**Mesure dynamique (pédagogique, en bas de page) :**
-
-À chaque CG, on vérifie si T_q prédit < gap réel jusqu'au prochain CG. Sert à visualiser
-des cas concrets où le modèle se trompe en cours d'alerte, mais ne reflète pas le risque
-opérationnel final.
+Les 3 sont calculées sur eval 2023-25 (1 352 alertes, 17 037 CG, 385 CG <3 km).
 """)
 
 # Sidebar
@@ -377,9 +370,14 @@ if st.session_state.launched:
         out = evaluate(q)
 
     # ==========================================================
-    # KPI globaux — PROTOCOLE OFFICIEL Evaluation_databattle_meteorage
+    # KPI globaux — MESURE B (operationnelle, 1 decision/alerte au last CG)
     # ==========================================================
-    st.subheader(f"Résultats à q = {q:.2f}  —  protocole officiel Evaluation_databattle_meteorage")
+    st.subheader(f"Mesure B — Opérationnelle à q = {q:.2f}  (headline production)")
+    st.caption(
+        "**1 décision par alerte au dernier CG observé** (toutes les 1352 alertes évaluées). "
+        "C'est ce qu'on déploierait en production : le timer T_q s'écoule sans nouveau CG, "
+        "on lève. Risque CG = 0 % par construction d'une alerte Météorage."
+    )
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric('Alertes évaluées', f"{out['n_alerts_evaluated']:,} / {out['n_alerts_total']:,}",
@@ -447,12 +445,12 @@ if st.session_state.launched:
                     "Augmente q pour être plus conservateur.")
 
     # ==========================================================
-    # Table secondaire : SWEEP THETA (protocole strict avec ALL CG preds)
+    # Table secondaire : MESURE C (sweep theta strict)
     # ==========================================================
     st.markdown('---')
-    st.subheader("Mesure alternative : sweep θ sur ALL CG predictions (protocole strict)")
+    st.subheader("Mesure C — Protocole jury sweep θ (conformité stricte)")
     st.caption(
-        "On émet UNE prédiction à chaque CG (et plus seulement au dernier). Pour θ donné, "
+        "On émet UNE prédiction à CHAQUE CG (et plus seulement au dernier). Pour θ donné, "
         "on garde les prédictions avec confidence ≥ θ et on prend la plus précoce par alerte. "
         "C'est la lecture la plus stricte du protocole — elle évalue moins d'alertes mais "
         "donne un risque CG non-trivial (>0)."
@@ -493,11 +491,11 @@ for (airport, alert_id) in last_cgs:
 """)
 
     # ==========================================================
-    # Visualisation pédagogique des erreurs intermédiaires (mesure dynamique)
+    # MESURE A (dynamique, pedagogique) avec visualisation timeline
     # ==========================================================
     if out['n_incidents'] > 0:
         st.markdown('---')
-        st.subheader(f"Cas pédagogiques — {out['n_incidents']} sous-estimations intermédiaires (mesure dynamique)")
+        st.subheader(f"Mesure A — Dynamique : {out['n_incidents']} sous-estimations intermédiaires (cas pédagogiques)")
         st.caption(
             f"⚠️ Ces {out['n_incidents']} cas ne sont **pas** les incidents du protocole officiel "
             f"(qui en compte {out['missed_eclairs_3km']} CG+IC à <3 km / {out['missed_cg_3km']} CG seuls). "

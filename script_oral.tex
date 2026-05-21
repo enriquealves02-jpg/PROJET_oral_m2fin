@@ -505,7 +505,39 @@ Pour deux CG consécutifs $i$ et $i+1$ dans la même alerte, soit $\Delta_i$ l'�
 \textbf{Lecture} : le modèle a annoncé qu'on pouvait lever à $T_q$ min, mais en réalité le prochain CG arrive
 après $T_q$ (donc on aurait levé trop tôt) \emph{et} ce CG est dangereux ($<3$ km).
 
-\subsection{Résultats sur eval (973 alertes, 17 037 CG analysables, 385 CG $<3$ km)}
+\subsection{Plan : trois mesures complémentaires}
+
+\noindent\begin{tcolorbox}[colback=gray!8,colframe=gray!50!black,title=\textbf{Plan des résultats — chaque mesure répond à une question différente}]
+On évalue le modèle sur eval 2023-25 (\textbf{1\,352 alertes}, 17\,037 CG analysables,
+\textbf{385 CG <3 km}) avec \textbf{trois mesures complémentaires}.
+
+\begin{center}
+\begin{tabular}{|p{2.6cm}|p{4.5cm}|p{4.5cm}|}
+\hline
+\textbf{Mesure} & \textbf{Question répondue} & \textbf{Méthode} \\
+\hline
+\textbf{A. Dynamique} & \og Où le modèle se trompe-t-il en cours d'alerte ? \fg{} & On vérifie le $T_q$ prédit à \textbf{chaque} CG vs le vrai gap au CG suivant \\
+\hline
+\textbf{B. Opérationnelle} & \og Que gagne-t-on en \textbf{production} ? \fg{} & UNE décision par alerte : lever à $\text{last\_CG} + T_q$ sur \textbf{toutes} les 1\,352 alertes \\
+\hline
+\textbf{C. Protocole jury} & \og Que mesure le jury en suivant strictement le protocole ? \fg{} & Sweep $\theta$ sur \texttt{predictions.csv} : multi-prédictions par alerte + filtre par confidence \\
+\hline
+\end{tabular}
+\end{center}
+
+\textbf{À dire à l'oral} : \og On présente trois mesures parce qu'elles répondent à trois
+questions différentes — diagnostic, production, conformité protocole. \fg{}
+\end{tcolorbox}
+
+\subsection{Mesure A — Dynamique : où le modèle se trompe-t-il en cours d'alerte ?}
+
+\paragraph{Définition.} À \emph{chaque} CG observé en cours d'alerte, on simule \og que se
+passerait-il si on appliquait $T_q$ immédiatement après ce CG ? \fg{}. Un incident est compté si :
+\[
+\big(\Delta_i > T_q(X_i)\big) \;\text{ET}\; \big(\text{dist}(CG_{i+1}) < 3~\text{km}\big)
+\]
+
+\textbf{Résultats sur eval} :
 
 \begin{table}[H]
 \centering
@@ -513,35 +545,112 @@ après $T_q$ (donc on aurait levé trop tôt) \emph{et} ce CG est dangereux ($<3
 \toprule
 \textbf{$q$} & \textbf{Cible $1-q$} & \textbf{Levées avant prochain CG} & \textbf{Incidents} & \textbf{Risque réel} \\
 \midrule
-0.90 & 10 \% & 2\,052 & 54 & 14,03 \% \\
-0.95 & 5 \%  & 1\,151 & 37 &  9,61 \% \\
-0.99 & 1 \%  &   590  & 15 &  3,90 \% \\
+0,90 & 10 \% & 2\,052 & 54 & 14,03 \% \\
+0,95 & 5 \%  & 1\,151 & 37 &  9,61 \% \\
+0,99 & 1 \%  &   590  & 15 &  3,90 \% \\
 \midrule
 \multicolumn{2}{l}{Baseline 30 min Météorage} & --- & 4 & \textbf{1,04 \%} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Trois mesures complémentaires}
+\textbf{Interprétation} : à $q=0{,}95$, le modèle ferait une erreur intermédiaire (T\_q trop
+court ET prochain CG dangereux) dans 9,61 \% des cas où on aurait pu lever en avance. Mesure
+\textbf{stricte} qui sert au diagnostic — elle pénalise toutes les sous-estimations
+intermédiaires, même celles qui n'auraient pas conduit à un incident opérationnel (puisque le
+prochain CG arrive et reset le compteur en pratique).
 
-\noindent\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Important : distinction}]
-On peut mesurer le risque de trois façons. Toutes sont valides et complémentaires.
+\textbf{Utilité pratique} : ces 37 cas à $q=0{,}95$ sont visualisables un par un dans la démo
+Streamlit avec une timeline graphique de l'alerte concernée.
 
-\textbf{1. Mesure dynamique (à chaque CG)} : la mesure ci-dessus. Simule \og que se passerait-il
-si on appliquait $T_q$ à chaque CG \fg{}. C'est ce que la démo Streamlit visualise.
+\subsection{Mesure B — Opérationnelle : que gagne-t-on en production ?}
 
-\textbf{2. Protocole officiel \emph{sweep} avec restriction CG <3 km (= ce que mesure le jury)} :
-notebook \texttt{Evaluation\_databattle\_weibull.ipynb}. On émet une prédiction à chaque CG
-avec \texttt{confidence}~$= S(30 \mid X)$, puis sweep sur $\theta = q$.
-Meilleur point opérationnel : $q = 0{,}99 \Rightarrow R_{\text{CG}} = 2{,}86\%$ (11/385),
-gain $= 26$\,h. La cible $R < 2\%$ n'est pas atteinte avec cette confidence seule.
+\paragraph{Définition.} En production, on lève l'alerte UNE fois par alerte, au moment où le
+timer $T_q$ s'écoule sans nouveau CG (= au dernier CG observé + $T_q$). Calcul exact comme dans
+\texttt{Evaluation\_databattle\_meteorage.ipynb} (section 8 du notebook
+\texttt{Weibull\_final3km}) :
 
-\textbf{3. Mesure étendue CG + IC (référence)} : à $q=0{,}95$ avec 1 prédiction par alerte au
-last CG, on obtient $R = 0{,}60$ \% (12/1\,995) et $\approx 330$ heures de gain — borne du
-potentiel si on connaissait le dernier CG à l'avance.
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+for chaque alerte (1352 au total):
+    pred_end = last_CG + T_q calibre (cape a 30 min)
+    baseline_end = dernier eclair de l'alerte + 30 min
+    gain += baseline_end - pred_end
+    missed_CG += nb CG <3 km arrivant apres pred_end
+\end{lstlisting}
+
+\textbf{Résultats sur eval} :
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ccccc}
+\toprule
+\textbf{$q$} & \textbf{$T_q$ médian} & \textbf{CG <3 km manqués} & \textbf{Risque CG} & \textbf{Gain cumulé} \\
+\midrule
+0,85 &  4,5 min & 0 / 385 & 0 \% & \textbf{388 h} \\
+0,95 &  9,4 min & 0 / 385 & 0 \% & \textbf{330 h} \\
+0,99 & 17,4 min & 0 / 385 & 0 \% & 269 h \\
+Baseline 30 min & — & 0 / 385 & 0 \% & 0 h \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Interprétation} : \textbf{0 \% de risque CG par construction} d'une alerte Météorage
+(aucun CG n'arrive plus de 30 min après le dernier, sinon une nouvelle alerte démarre). Le
+modèle exploite cette structure pour lever en moyenne 20 min plus tôt que la baseline.
+\textbf{330 h gagnées à $q = 0{,}95$ sans rater un seul CG dangereux}. C'est notre
+\textbf{headline opérationnel}.
+
+\subsection{Mesure C — Protocole jury : sweep $\theta$ strict}
+
+\paragraph{Définition.} On émet une prédiction à \emph{chaque} CG (et non plus une seule au last
+CG) avec un score de confidence $= S(30 \mid X)$ (probabilité prédite qu'aucun CG ne suive dans
+les 30 min suivantes). Le jury filtre par $\theta$ et prend la prédiction la plus précoce par
+alerte. Le détail pas-à-pas est dans la sous-section suivante.
+
+\textbf{Résultats sur eval} (restriction CG <3 km) :
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ccccc}
+\toprule
+\textbf{$\theta$} & \textbf{Alertes filtrées} & \textbf{CG manqués} & \textbf{Risque CG} & \textbf{Gain cumulé} \\
+\midrule
+0,85 & 140 / 1\,352 & 29 / 385 & 7,53 \% & 118 h \\
+0,95 &  68 / 1\,352 & 21 / 385 & 5,45 \% &  60 h \\
+\textbf{0,99} & \textbf{26 / 1\,352} & \textbf{11 / 385} & \textbf{2,86 \%} & \textbf{26 h} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Interprétation} : le risque CG devient non-trivial parce que la confidence $S(30 \mid X)$
+laisse parfois passer des prédictions trop précoces. À $\theta = 0{,}99$ on a 2,86 \% / 26 h.
+La cible 2 \% du protocole n'est pas atteinte avec cette confidence seule — un classifieur
+secondaire dédié à \og ce CG est-il le dernier ? \fg{} permettrait d'y aller.
+
+\subsection{Comparaison synthétique des trois mesures (récap)}
+
+\noindent\begin{tcolorbox}[colback=green!5,colframe=green!50!black,title=\textbf{Les 3 mesures à $q=0{,}95$}]
+\begin{tabular}{|p{2.8cm}|c|c|p{4.5cm}|}
+\hline
+\textbf{Mesure} & \textbf{Risque CG} & \textbf{Gain} & \textbf{À retenir} \\
+\hline
+A. Dynamique (par CG) & 9,61 \% (37/385) & --- & Mesure pédagogique : 37 cas visualisables \\
+\hline
+\textbf{B. Opérationnelle} & \textbf{0 \%} (0/385) & \textbf{330 h} & \textbf{Headline production} \\
+\hline
+C. Protocole sweep $\theta$ & 5,45 \% (21/385) & 60 h & Conformité jury (alertes filtrées seules) \\
+\hline
+Baseline 30 min & 0 \% & 0 h & Référence Météorage \\
+\hline
+\end{tabular}
+
+\medskip
+\textbf{À dire} : \og En production, le modèle gagne 330 heures sur les 1\,352 alertes sans
+aucun incident CG (B). Sur la conformité stricte au protocole du jury, on a 5,45 \% pour 60 h
+(C). Et 37 cas concrets sont visualisables dans la démo Streamlit (A). \fg{}
 \end{tcolorbox}
 
-\subsection{Exemples concrets d'incidents (à $q=0{,}95$)}
+\subsection{Exemples concrets d'incidents Mesure A (à $q=0{,}95$)}
 
 \begin{table}[H]
 \centering
