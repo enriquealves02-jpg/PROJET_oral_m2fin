@@ -623,11 +623,14 @@ adaptée au critère 3 km.
     st.pyplot(fig, clear_figure=True)
 
     # Tableau T* par seuil
+    events_for_emp = out['events']
     rows = []
     for alpha in [0.01, 0.05, 0.10]:
         ok = T_grid[risk_curve <= alpha]
         T_star = int(ok[0]) if len(ok) else None
-        n_inc = int(((events_full['gap_to_next_min'] > T_star) & (events_full['dist_next'] < 3)).sum()) if T_star else None
+        n_inc = (int(((events_for_emp['gap_to_next_min'] > T_star)
+                       & (events_for_emp['dist_next'] < 3)).sum())
+                 if T_star else None)
         rows.append({
             'Niveau de risque alpha': f'{alpha*100:.0f} %',
             'T* (min)': f'{T_star}' if T_star else '> 30',
