@@ -567,11 +567,77 @@ dangereux frappe. \fg{}
 
 \subsection{Reproduction fidèle du protocole officiel — deux mesures}
 
-\textbf{À dire à l'oral} : \og Nous reproduisons le notebook officiel
-\texttt{Evaluation\_databattle\_meteorage.ipynb} avec deux lectures complémentaires,
-toutes deux sur le critère CG seul <3 km (les IC ne sont pas dangereux au sol). \fg{}
+\paragraph{Le protocole officiel — comment ça marche concrètement.}
 
-\textbf{Mesure 1 — 1 décision par alerte au dernier CG (toutes les 1\,352 alertes évaluées)} :
+Le jury attend un fichier \texttt{predictions.csv} qui contient, pour chaque éclair observé,
+une ligne avec :
+\begin{itemize}[topsep=2pt]
+    \item \texttt{predicted\_date\_end\_alert} : la date à laquelle on prédit que l'alerte
+    peut être levée.
+    \item \texttt{confidence} : un score entre 0 et 1 disant \og je suis confiant à ce point que cet
+    éclair est le dernier de l'alerte \fg{}.
+\end{itemize}
+
+Le jury fixe ensuite un seuil $\theta$ et applique cette procédure pour chaque alerte :
+\begin{enumerate}[topsep=2pt]
+    \item Garder uniquement les prédictions où \texttt{confidence $\geq \theta$}.
+    \item Parmi celles qui restent, prendre la \textbf{plus précoce}.
+    \item Compter combien de CG <3 km arrivent \emph{après} cette levée prédite = \textbf{risque}.
+    \item Calculer combien de minutes on gagne par rapport à la baseline (= dernier éclair + 30 min)
+    = \textbf{gain}.
+\end{enumerate}
+
+\noindent\begin{tcolorbox}[colback=yellow!4,colframe=yellow!50!black,title=\textbf{Exemple concret pas-à-pas (1 alerte fictive)}]
+Imaginons une alerte avec 4 éclairs CG :
+\begin{itemize}[topsep=2pt]
+    \item CG\_1 à 14h00 (début de l'alerte)
+    \item CG\_2 à 14h05
+    \item CG\_3 à 14h12
+    \item CG\_4 à 14h20 (le \emph{vrai} dernier CG)
+    \item Pas de CG suivant pendant 30 min $\Rightarrow$ alerte fermée par Météorage à \textbf{14h50}.
+\end{itemize}
+
+À chaque CG, notre modèle émet une prédiction $(\text{pred\_end},\ \text{confidence})$ :
+\begin{itemize}[topsep=2pt]
+    \item CG\_1 : pred\_end = 14h03 ($T_q$=3 min), confidence = 0,10 \quad \emph{(début d'orage,
+    pas confiant)}
+    \item CG\_2 : pred\_end = 14h10, confidence = 0,30
+    \item CG\_3 : pred\_end = 14h19, confidence = 0,60
+    \item CG\_4 : pred\_end = 14h30 ($T_q$=10 min), confidence = 0,97 \quad \emph{(modèle confiant,
+    plus aucun CG après)}
+\end{itemize}
+
+\medskip
+\textbf{Choix de $\theta$} :
+
+\begin{tabular}{|c|p{3.5cm}|p{4cm}|p{3cm}|}
+\hline
+$\theta$ & Prédictions retenues & On lève à & Conséquence \\
+\hline
+0,95 & seulement CG\_4 & 14h30 & gain = 20 min, 0 CG manqué \\
+\hline
+0,50 & CG\_3 et CG\_4 \newline (on prend la plus précoce) & 14h19 & gain = 31 min, MAIS CG\_4 à 14h20 arrive \emph{après} 14h19 $\Rightarrow$ si dist(CG\_4) <3 km, c'est un incident ! \\
+\hline
+0,00 & toutes les preds \newline (on prend la plus précoce) & 14h03 (= CG\_1) & gain = 47 min, MAIS CG\_2, CG\_3, CG\_4 tous après 14h03 $\Rightarrow$ 3 incidents potentiels \\
+\hline
+\end{tabular}
+
+\medskip
+$\theta$ haut $\Rightarrow$ on est strict, on n'utilise que les prédictions très confiantes,
+\textbf{peu d'incidents mais gain modeste}.
+
+$\theta$ bas $\Rightarrow$ on accepte des prédictions peu confiantes (souvent en début d'orage,
+trop précoces), \textbf{gain énorme mais beaucoup d'incidents}.
+\end{tcolorbox}
+
+\paragraph{Maintenant les vrais chiffres sur eval 2023-25} (1\,352 alertes, 385 CG <3 km) avec
+restriction CG seul (les IC ne sont pas dangereux au sol) :
+
+\medskip
+\textbf{Mesure 1 — On émet UNE seule prédiction par alerte, au dernier CG observé}
+
+(C'est exactement la procédure ci-dessus simplifiée : un seul $(\text{pred\_end}, \text{conf})$
+par alerte, avec confidence proche de 1. Toutes les 1\,352 alertes sont évaluées.)
 
 \begin{table}[H]
 \centering
@@ -583,17 +649,23 @@ toutes deux sur le critère CG seul <3 km (les IC ne sont pas dangereux au sol).
 0,85 &  4,5 min & 0 / 385 & 0 \% & \textbf{388 h} \\
 0,95 &  9,4 min & 0 / 385 & 0 \% & \textbf{330 h} \\
 0,99 & 17,4 min & 0 / 385 & 0 \% & 269 h \\
-Baseline & — & 0 / 385 & 0 \% & 0 h \\
+Baseline 30 min & — & 0 / 385 & 0 \% & 0 h \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{À dire} : \og Le 0 \% n'est pas un mérite du modèle — c'est une conséquence de la
-définition d'une alerte Météorage : aucun CG n'arrive plus de 30 min après le dernier, sinon
-une nouvelle alerte démarre. Notre modèle exploite cette structure pour lever 20 min plus tôt
-en moyenne, tout en restant aussi sûr que la baseline. 330 heures gagnées à $q = 0{,}95$. \fg{}
+\textbf{À dire} : \og Le 0 \% n'est pas un mérite du modèle — c'est mathématique : par définition
+d'une alerte Météorage, aucun CG n'arrive plus de 30 min après le dernier (sinon nouvelle alerte
+démarre). Notre modèle exploite ça pour lever à $\text{last\_CG} + T_q$ au lieu de
+$\text{last\_CG} + 30\text{ min}$, soit \textbf{20 min plus tôt en moyenne, sans rater aucun CG}.
+Sur les 1\,352 alertes : 330 heures gagnées à $q = 0{,}95$. \fg{}
 
-\textbf{Mesure 2 — Sweep $\theta$ strict (multiples preds par alerte)} :
+\medskip
+\textbf{Mesure 2 — On émet UNE prédiction à CHAQUE CG, puis le jury filtre par $\theta$}
+
+(C'est la version stricte du protocole — comme dans l'exemple ci-dessus avec 4 prédictions par
+alerte. Certaines alertes ont une confidence trop basse partout $\Rightarrow$ elles ne sont pas
+\og levées en avance \fg{} par le modèle et restent à la baseline.)
 
 \begin{table}[H]
 \centering
@@ -609,11 +681,31 @@ en moyenne, tout en restant aussi sûr que la baseline. 330 heures gagnées à $
 \end{tabular}
 \end{table}
 
-\textbf{À dire} : \og En lecture strict (le jury filtre par confidence à chaque CG individuel,
-sans utiliser l'information du dernier CG), le risque CG devient non-trivial. À
-$\theta = 0{,}99$ on a 2,86 \% pour 26 h sur 26 alertes filtrées. La cible 2 \% du protocole
-n'est pas atteinte avec la confidence $S(30 \mid X)$ seule — un classifieur secondaire
-\og dernier CG \fg{} dédié permettrait d'y aller. \fg{}
+\textbf{À dire} : \og En lecture stricte du protocole, le jury filtre par confidence à chaque
+CG individuel, sans savoir lequel est le dernier. Comme notre confidence n'est pas parfaite,
+elle laisse parfois passer des prédictions précoces qui font \og lever trop tôt \fg{} et ratent
+des CG suivants. À $\theta = 0{,}99$ on a 2,86 \% de risque pour 26 h de gain sur 26 alertes.
+La cible 2 \% du protocole n'est pas atteinte avec cette confidence — un classifieur secondaire
+dédié à la cible \og ce CG est-il le dernier ? \fg{} permettrait d'y aller. \fg{}
+
+\medskip
+\noindent\begin{tcolorbox}[colback=red!4,colframe=red!50!black,title=\textbf{Pourquoi la Mesure 1 (388 h) donne plus de gain que la Mesure 2 (118 h) ?}]
+La Mesure 1 \textbf{évalue les 1\,352 alertes}. À chaque alerte, on lève à
+$\text{last\_CG} + T_q$ peu importe la confidence.
+
+La Mesure 2 ne sélectionne que les alertes dont \emph{au moins une prédiction} passe
+$\theta$ : à $\theta = 0{,}85$, seules \textbf{140 alertes sur 1\,352} passent. Les 1\,212
+autres restent à la baseline 30 min $\Rightarrow$ gain 0 sur ces alertes.
+
+Différence = \textbf{le coût d'incertitude opérationnelle} : la confidence $S(30|X)$ n'est pas
+assez tranchée pour différencier les CG du milieu d'orage des CG terminaux. Avec un meilleur
+classifieur \og dernier CG \fg{}, on récupérerait le gain de la Mesure 1 dans la Mesure 2.
+
+\textbf{En production réelle}, le timer expire toujours à $\text{last\_CG} + T_q$ (peu importe
+la confidence) $\Rightarrow$ on a bien les 330-388 h de gain. La Mesure 1 est le chiffre
+opérationnel pertinent. La Mesure 2 quantifie ce qui se passe quand on suit \emph{strictement}
+la procédure de soumission du Data Battle.
+\end{tcolorbox}
 
 % =========================================================================
 \section{Risque empirique non-paramétrique adapté à 3 km}
