@@ -1,0 +1,648 @@
+% ==========================================================================
+% ORAL — PARTIE ENRIQUE (slides 11 a 22)
+% Script precis : tout ce qu'il faut dire, mot pour mot.
+% Compilable avec pdflatex.
+% ==========================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+
+\usepackage{amsmath,amssymb,bm}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{fancyhdr}
+
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 1pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Oral — Partie Enrique}
+\fancyhead[R]{Battle Météorage}
+\fancyfoot[C]{\thepage}
+
+\newtcolorbox{dire}{colback=blue!4, colframe=blue!50!black, title=\textbf{À dire (mot pour mot)}}
+\newtcolorbox{compr}{colback=green!4, colframe=green!50!black, title=\textbf{Ce qu'il faut comprendre}}
+\newtcolorbox{piege}{colback=orange!4, colframe=orange!60!black, title=\textbf{Piège / question possible du jury}}
+\newtcolorbox{transit}{colback=gray!5, colframe=gray!50!black, title=\textbf{Transition}}
+
+\title{\textbf{Oral — Partie Enrique} \\[0.3em]
+       \large Script précis pour les slides 11 à 22 \\
+       \small Battle Météorage --- Weibull AFT + protocole Data Battle}
+\author{}
+\date{}
+
+% ==========================================================================
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[colback=yellow!8, colframe=yellow!50!black, title=\textbf{Mode d'emploi}]
+\textbf{Tu présentes les slides 11 à 22.} Pour chaque slide :
+\begin{itemize}[leftmargin=*, topsep=2pt]
+    \item \textbf{À dire} = phrase à dire telle quelle (en bleu)
+    \item \textbf{Ce qu'il faut comprendre} = ce que le concept veut dire en français simple (en vert)
+    \item \textbf{Piège} = question pénible que le jury peut poser, et la réponse
+    \item \textbf{Transition} = phrase pour enchaîner vers le slide suivant (en gris)
+\end{itemize}
+
+Lis les blocs bleus en gardant les yeux sur le public. Les autres sont pour toi en cas de question.
+
+\textbf{Important} : si tu galères sur un slide, dis juste les blocs bleus, ils suffisent.
+Les autres sont du bonus pour répondre aux questions.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+% ==========================================================================
+\section{Slide 11 — Le piège : on annonce 1 \%, on a 6 \% en réalité}
+
+\begin{dire}
+\og On a notre Weibull AFT qui prédit $T_q$. C'est bien, mais avant de le déployer,
+il faut vérifier qu'il est \textbf{bien calibré}.
+
+Calibré veut dire : si j'annonce 1 \% de risque, j'ai \emph{vraiment} 1 \% de risque, pas 6 \%.
+
+Et sur nos données de test, le modèle n'est pas calibré. Quand on annonce 1 \% de risque,
+en réalité 6 \% des observations dépassent le quantile prédit. Pour 5 \% on est à 14 \%,
+pour 10 \% on est à 21 \%. C'est entre 2 et 6 fois plus que ce qu'on annonce.
+
+Pourquoi ? Parce que la queue de la loi de Weibull décroît très vite, en
+$\exp(-(t/\lambda)^k)$. Mais les vrais longs silences entre éclairs sont \emph{encore plus
+longs} que ce que Weibull prédit. Le modèle est trop optimiste sur les extrêmes.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Calibration} = est-ce que ce qu'on annonce correspond à ce qui se passe vraiment ?
+
+Exemple Météo France : quand le bulletin annonce \og 30 \% de probabilité de pluie demain\fg{},
+on attend qu'il pleuve effectivement \emph{environ 30 \%} des jours où ce bulletin sort.
+
+Pour notre modèle : quand on annonce \og après $T_q$ minutes, il y a 1 \% de chance qu'un éclair
+arrive\fg{}, on aimerait que ce soit vrai. Mais sur le test, ce n'est pas 1 \%, c'est 6 \%.
+Donc le modèle est \textbf{trop optimiste} : il sous-estime le risque réel.
+
+C'est comme un thermomètre qui affiche toujours 2 degrés de moins que la vraie température :
+il faut le \emph{corriger} avant de l'utiliser.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Pourquoi le Weibull est-il sous-calibré ?}
+
+R : Parce que la queue Weibull décroît comme une exponentielle. Or les vrais longs silences
+intra-orage suivent plutôt une décroissance plus lente (heavy tail). Le Weibull \og sous-estime
+les valeurs extrêmes\fg{} — donc ses quantiles élevés ($T_{99}$) sont trop courts par rapport
+à la réalité.
+\end{piege}
+
+\begin{transit}
+\og C'est pour ça qu'on a ajouté une calibration empirique robuste. Slide suivant. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 12 — Solution : winsorization + monotonicité}
+
+\begin{dire}
+\og La solution : une \textbf{calibration empirique en deux étapes}.
+
+\textbf{Étape 1 — winsorization.} On regarde les résidus, c'est-à-dire le rapport entre
+le temps réel observé et le temps $T_q$ prédit par Weibull. Si on est bien calibré, ce rapport
+vaut environ 1. Si on est sous-calibré, il est plus grand.
+
+On calcule le P95 de ces résidus, et on remplace toute valeur au-dessus du P95 par la valeur du P95.
+Ça neutralise les outliers extrêmes sans les supprimer. Ensuite on prend le quantile $q$
+des résidus winsorisés : c'est notre coefficient $c_q$.
+
+\textbf{Étape 2 — monotonicité.} Mathématiquement, $T_{99} > T_{95} > T_{90}$.
+Mais après winsorization, on a parfois $c_{99} < c_{95}$, ce qui rendrait $T_{99} < T_{95}$,
+absurde. On impose donc :
+$c_q^{\text{final}} = \max(c_q^{\text{winsorisé}},\ c_{q-1}^{\text{final}})$.
+
+Au final, le quantile calibré est $T_q^{\text{cal}}(X) = c_q \cdot T_q^{\text{Weibull}}(X)$.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Winsorization} : on coupe les valeurs extrêmes au lieu de les supprimer.
+
+Exemple : tu as les notes 8, 10, 12, 14, 20. La 20 est un outlier. Au lieu de la supprimer,
+tu la remplaces par 14 (le P80 par exemple). Tu gardes l'information \og c'était une grosse note \fg{}
+mais sans qu'elle pèse trop dans la moyenne.
+
+\textbf{Monotonicité} : la sécurité 1 \% doit donner un temps d'attente \emph{plus long} que la sécurité 5 \%.
+Sinon, c'est incohérent.
+
+\textbf{Le résultat} : un facteur multiplicatif $c_q$ qu'on applique au Weibull brut.
+Par exemple $c_{95} = 2{,}02$ veut dire \og pour vraiment avoir 5 \% de risque, il faut multiplier
+le $T_{95}$ Weibull par 2 \fg{}.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Pourquoi ne pas avoir choisi une autre loi (Gamma, Log-normale) au lieu de corriger ?}
+
+R : On a essayé. Weibull est le standard en survie pour les inter-arrivées (référence dans
+les manuels de fiabilité industrielle). En plus, lifelines le supporte nativement avec censure.
+Le post-hoc de calibration empirique est plus rapide à mettre en œuvre et donne des résultats
+robustes — on aurait pu utiliser une non-paramétrique, mais on perd la régression sur les
+covariables qui est le point clé.
+\end{piege}
+
+\begin{transit}
+\og Maintenant qu'on a un modèle calibré, on vérifie nos résultats avec une approche
+\emph{complètement indépendante}. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 13 — Vérification empirique non-paramétrique}
+
+\begin{dire}
+\og On veut une vérification \textbf{indépendante du modèle}, sans aucune hypothèse de distribution.
+
+L'idée est simple : pour chaque alerte historique, on calcule $G(A)$, le plus grand silence
+intra-alerte — c'est-à-dire le plus grand intervalle entre deux éclairs consécutifs.
+
+Si on avait choisi un temps de maintien $T$ inférieur à $G(A)$, on aurait fermé l'alerte
+\emph{avant} l'éclair suivant — c'est un incident.
+
+Le \textbf{risque empirique} pour un $T$ donné est juste la fraction d'alertes où $G(A) > T$.
+
+Sur le train, à 10 \% de tolérance, $T^*(10\%) = 25$ min (gain 5 min). À 5 \%, c'est 28 min
+(gain 2 min). \textbf{À 1 \%, c'est exactement 30 minutes}.
+
+\textbf{Découverte} : la règle Météorage des 30 minutes correspond \emph{exactement} à
+1 \% de risque sur les données train. Elle n'est pas un choix arbitraire — elle est
+statistiquement calibrée.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Non-paramétrique} = sans modèle, sans hypothèse de loi.
+On utilise juste les données telles quelles.
+
+\textbf{$G(A) = $ plus grand silence intra-alerte} : pour une alerte avec les éclairs aux
+instants $t_1, t_2, \dots, t_n$, on calcule les gaps $\Delta_i = t_{i+1} - t_i$ et on prend
+le plus grand. Ça nous dit \og quel est l'intervalle minimum qu'il faut tolérer pour ne pas
+couper l'alerte trop tôt ? \fg{}
+
+\textbf{La logique} : si je pose la règle \og lever après $T$ min de silence \fg{}, et qu'une
+alerte a $G(A) = 25$ min, alors avec $T = 20$ je rate l'alerte (le suivant arrive avant T).
+Avec $T = 30$ je suis safe.
+
+\textbf{Pourquoi 1 \% = 30 min} : ça veut dire que dans 99 \% des alertes du train, le plus grand
+silence intra-alerte est inférieur ou égal à 30 min. C'est la justification statistique de la
+règle Météorage.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Et si on intégrait les inter-alertes (gap > 30 min) ?}
+
+R : Bonne remarque. Par construction des alertes, on ne peut pas observer ces gaps directement
+intra-alerte. Mais on pourrait extraire les gaps inter-alerte, c'est-à-dire les périodes entre
+la fin d'une alerte et le début de la suivante. C'est une perspective qu'on a notée dans
+les pistes d'amélioration.
+\end{piege}
+
+\begin{transit}
+\og Maintenant on passe à l'évaluation sur les vraies données nouvelles : eval 2023-25. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 14 — Évaluation sur eval 2023-25}
+
+\begin{dire}
+\og On évalue le modèle sur le jeu d'évaluation 2023-25 — 973 alertes inédites, 17~037 CG.
+
+Mais on change le critère de mesure : on adopte le \textbf{critère 3 km du protocole officiel
+du Data Battle}.
+
+Pourquoi ? Parce que le vrai risque pour un aéroport n'est pas qu'un éclair tombe dans 20 km,
+c'est qu'il tombe dans 3 km du tarmac — c'est là que travaillent le personnel sol, le ravitailleur,
+les chargeurs. À 15 km, ça ne change rien aux opérations.
+
+Un \textbf{incident} dans ce critère = un éclair à moins de 3 km de l'aéroport tombant
+\emph{après} la fin d'alerte qu'on a prédite.
+
+On distingue \textbf{CG} (nuage-sol — l'éclair qui touche le sol, dangereux) et \textbf{IC}
+(intra-nuage — qui reste dans le nuage, non dangereux). Seuls les CG comptent dans le risque.
+
+Volumes : 973 alertes, 17~037 CG analysables, et \textbf{385 CG dangereux à moins de 3 km}.
+C'est le dénominateur du risque.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Pourquoi 3 km et pas 20 km ?} 20 km c'est le rayon où Météorage détecte les éclairs
+et déclenche l'alerte. Mais le risque physique pour les humains au sol se limite aux
+quelques kilomètres autour de l'aéroport. 3 km c'est la zone réellement dangereuse —
+chiffre donné par Sébastien de Météorage dans l'énoncé.
+
+\textbf{CG vs IC} : un CG, c'est l'éclair classique qui touche le sol — il peut foudroyer.
+Un IC reste dans le nuage et ne descend pas. Les IC ne sont pas dangereux pour les
+opérations au sol, donc on ne les compte pas dans le risque opérationnel.
+
+\textbf{Eval 2023-25} = données que le modèle n'a jamais vues à l'entraînement
+(qui s'est fait sur 2016-2022). C'est la vraie validation.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Et pourquoi ne pas avoir entraîné sur 3 km au lieu de 20 km ?}
+
+R : L'entraînement est sur le \emph{temps entre éclairs} (modèle de survie), pas sur la
+distance. C'est la mesure du risque qui change : on utilise les mêmes prédictions $T_q$,
+mais on compte différemment les erreurs. Le critère 3 km est imposé par le protocole
+officiel — c'est lui qui définit ce qui est un incident.
+\end{piege}
+
+\begin{transit}
+\og Voyons concrètement comment le modèle fonctionne en mode opérationnel. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 15 — Le modèle en mode opérationnel}
+
+\begin{dire}
+\og Le modèle fonctionne en trois étapes, à chaque éclair observé.
+
+\textbf{Étape 1 — Observation} : un CG est détecté en zone 20 km autour de l'aéroport.
+
+\textbf{Étape 2 — Prédiction} : le modèle calcule $T_q(X)$ en fonction du contexte de cet éclair :
+le rythme passé de l'orage, la distance, l'intensité, la saison. C'est notre temps d'attente
+recommandé en minutes.
+
+\textbf{Étape 3 — Décision} : si pendant $T_q$ minutes \emph{aucun nouveau CG n'arrive},
+on lève l'alerte. Si un nouveau CG arrive avant $T_q$, le compteur est remis à zéro et on
+recommence avec le nouveau contexte.
+
+C'est exactement la règle Météorage actuelle (30 min fixe), mais avec un \textbf{$T_q$ adaptatif}
+au contexte de chaque orage.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Adaptatif} = au lieu d'avoir un timer fixe de 30 min identique pour tous les orages,
+on a un timer qui change selon ce qu'on observe.
+
+Exemple : un orage très calme avec un éclair toutes les 8 min → le modèle pourrait
+prédire $T_q = 15$ min (orage qui se calme). Un orage très dense avec un éclair toutes
+les 30 secondes → le modèle prédirait $T_q$ proche de 30 min (orage actif).
+
+\textbf{Reset} : c'est la même mécanique que la baseline. Tu pars d'un timer, et s'il
+y a un nouvel éclair avant la fin, tu redémarres avec le nouveau contexte (qui peut
+être différent du précédent !).
+\end{compr}
+
+\begin{transit}
+\og Et voici les résultats sur eval. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 16 — Résultats sur eval : protocole officiel Data Battle}
+
+\begin{dire}
+\og On évalue avec exactement la procédure du jury, reproduite dans notre notebook
+\texttt{Evaluation\_databattle\_weibull.ipynb}.
+
+Concrètement, à chaque CG de l'eval, on émet une prédiction au format officiel
+\texttt{predictions.csv} avec trois champs :
+\begin{itemize}
+    \item la date prédite de fin d'alerte = date du CG + $T_{0{,}95}$ calibré ;
+    \item un score de \textbf{confidence} = $S(30 \mid X)$, la probabilité prédite par le modèle
+    qu'aucun éclair ne suive dans les 30 minutes — donc que ce CG soit le dernier de l'alerte.
+\end{itemize}
+
+Puis on fait un \textbf{sweep sur $\theta$} : pour chaque valeur de $\theta$, on filtre les
+prédictions avec confidence $\geq \theta$, on prend la plus précoce par alerte, et on mesure
+gain et risque.
+
+Résultats : à $\theta = 0$ (aucun filtre), le risque est très élevé — 97 \% — parce qu'on
+garde la prédiction du premier CG de l'alerte qui est trop précoce.
+À mesure que $\theta$ croît, on ne garde que les prédictions des CG \emph{terminaux},
+ceux pour qui le modèle est sûr que c'est le dernier. Le risque descend à 3,6 \% pour
+$\theta = 0{,}95$, gain 26 heures.
+
+\textbf{À titre comparatif}, si on connaissait la vérité-terrain — c'est-à-dire si on émettait
+une seule prédiction par alerte au dernier CG observé — on obtiendrait 0,60 \% de risque
+et un gain de 330 heures. C'est la borne supérieure du potentiel du modèle.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Confidence $S(30 \mid X)$} : c'est la probabilité que le modèle donne au fait que
+\emph{plus aucun éclair n'arrive dans les 30 min}. Si cette proba est élevée, le modèle te dit
+\og je suis très confiant que cet éclair est le dernier \fg{}.
+
+\textbf{Sweep $\theta$} : on teste plein de seuils $\theta$ pour cette confidence. Plus
+$\theta$ est haut, plus on est strict (on ne garde que les prédictions très confiantes),
+moins on a d'incidents, mais le gain diminue aussi parce qu'on attend plus.
+
+\textbf{Oracle vs réaliste} : l'oracle (0,60 \% de risque) suppose qu'on sait quel CG est le
+dernier. En réalité on ne le sait pas, donc on utilise une confidence approximative ($S(30|X)$)
+qui est utile mais pas parfaite — d'où le 3,6 \% au lieu de 0,60 \%. C'est le \og coût
+d'incertitude opérationnelle \fg{}.
+
+\textbf{26 h sur 973 alertes = 1,6 min de gain moyen par alerte}. C'est modeste,
+on l'assume.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Vous n'atteignez pas $R < 2 \%$ — le seuil acceptable du protocole. C'est un échec ?}
+
+R : Non, c'est un résultat scientifique honnête. Avec la confidence $S(30 \mid X)$ seule, on
+plafonne à 3,6 \%. Pour aller plus bas, il faudrait entraîner un \emph{classifieur secondaire
+dédié} à la tâche \og ce CG est-il le dernier ? \fg{} en utilisant plusieurs features
+combinés (T\_q, rolling\_gap, cg\_rank, etc.). C'est une perspective claire qu'on identifie.
+La borne oracle à 0,60 \% montre que le modèle a le potentiel — il manque juste un
+classifieur \og dernier CG \fg{} plus performant pour décrocher ce potentiel en opérationnel.
+
+\textbf{Q : Pourquoi 6 631 h dans le Streamlit alors ?}
+
+R : Le Streamlit affichait jusqu'à hier un \og gain dynamique \fg{} qui somme $(30 - T_q)$ sur
+les 17~037 CG. C'est mathématiquement gonflé : on ne lève qu'une seule fois par alerte (au
+dernier CG). On a corrigé l'app pour afficher le gain opérationnel par alerte, cohérent
+avec les 26 h du protocole.
+\end{piege}
+
+\begin{transit}
+\og Voyons maintenant des cas concrets où le modèle a sous-estimé un gap. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 17 — Cas concrets pédagogiques (démo Streamlit)}
+
+\begin{dire}
+\og Cette slide montre 5 exemples concrets parmi 37 où le modèle a \textbf{sous-estimé}
+le gap jusqu'au prochain CG. C'est une \textbf{mesure dynamique pédagogique} : on vérifie
+la prédiction à \emph{chaque} CG, et non pas la décision finale par alerte.
+
+Sur \texttt{Pise\_1319}, le modèle a prédit qu'aucun CG n'arriverait avant 2,75 min après
+le CG de référence. En réalité, le prochain CG est arrivé 35,78 min plus tard, à 1,87 km
+de l'aéroport — un CG dangereux. Si on avait levé à 2,75 min, l'aéroport aurait été en
+opérations sol pendant 33 min avant qu'un éclair dangereux frappe.
+
+\textbf{Important} : ces 37 cas ne sont \emph{pas} le risque opérationnel mesuré par
+le protocole. Le risque réel reste à 3,6 \% (sweep $\theta$) à 0,6 \% (oracle).
+Ces cas sont là pour la \textbf{pédagogie} — pour qu'on voie où le modèle se trompe
+intermédiairement. Tout est visualisable dans la démo Streamlit avec une timeline
+graphique de chaque incident.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Mesure dynamique vs opérationnelle} :
+\begin{itemize}
+    \item \textbf{Dynamique} = on vérifie la prédiction du modèle à \emph{chaque} CG.
+    Sur 17~037 CG, le modèle se trompe 37 fois (= 9,61 \% des 385 CG dangereux).
+    Mais en pratique, beaucoup de ces \og erreurs \fg{} sont sur des CG en plein milieu
+    de l'alerte, où on n'aurait jamais levé de toute façon parce qu'un autre CG est arrivé
+    après.
+
+    \item \textbf{Opérationnelle / protocole} = on regarde uniquement la décision finale par
+    alerte (= la dernière fois que le timer s'écoule). Là, le risque est de 3,6 \% ou 0,6 \%.
+\end{itemize}
+
+La mesure dynamique sert à \textbf{comprendre} les erreurs, pas à mesurer le risque réel.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Pourquoi 37 erreurs mais seulement 26 h de gain ? Ce n'est pas incohérent ?}
+
+R : Non, parce que les 37 erreurs sont sur des CG \emph{intermédiaires} qui n'ont pas
+déclenché de levée en pratique (un autre CG est arrivé avant la fin du timer).
+Le gain de 26 h se calcule différemment : c'est le temps gagné sur la \emph{dernière}
+décision par alerte. Les deux mesures sont complémentaires : la dynamique compte les
+sous-estimations, l'opérationnelle compte le gain final.
+\end{piege}
+
+\begin{transit}
+\og On vérifie maintenant nos résultats avec l'approche non-paramétrique 3 km. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 18 — Risque empirique non-paramétrique 3 km}
+
+\begin{dire}
+\og On répète la vérification empirique non-paramétrique, mais cette fois sur le critère 3 km.
+
+Pour chaque CG de l'eval, on calcule l'écart $\Delta_i$ jusqu'au prochain CG et sa distance.
+Pour un seuil $T$ fixe — la règle \og lever après $T$ min de silence pour tous les
+orages \fg{} — combien de CG dangereux seraient ratés ?
+
+Résultats : à 10 \% de tolérance, $T^* = 5$ min (gain 25 min vs baseline). À 5 \%, $T^* = 9$ min
+(gain 21 min). À 1 \%, c'est plus de 30 min — \textbf{non atteignable}.
+
+Pour le critère 3 km, la baseline 30 min reste donc nécessaire si on veut absolument
+1 \% de risque sur les CG dangereux.
+
+C'est une validation indépendante : sans modèle, on confirme que l'objectif 1 \% sur 3 km
+demande de maintenir la baseline.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Non-paramétrique 3 km} : c'est la même logique que slide 13, mais en comptant
+uniquement les éclairs $<3$ km comme \og dangereux \fg{}.
+
+\textbf{Lecture} : $T^*(5\%) = 9$ min veut dire \og si je pose la règle \emph{toute alerte
+est levée 9 min après le dernier CG}, alors 5 \% des alertes auront un CG dangereux qui
+arrive après cette levée \fg{}.
+
+\textbf{Pourquoi 1 \% non atteignable ?} Parce que sur eval, il existe des alertes où
+$G(A) > 30$ min avec un CG dangereux. Donc même la baseline 30 min ne couvre pas tout.
+\end{compr}
+
+\begin{transit}
+\og Et tout ça est interactif dans la démo. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 19 — Démo Streamlit interactive}
+
+\begin{dire}
+\og La démo Streamlit, lancée par \texttt{streamlit run app.py}, permet d'inspecter
+chaque cas concret.
+
+Dans la sidebar, on choisit le niveau de confiance $q$. Sur le tableau de bord :
+\begin{itemize}
+    \item KPI globaux : nombre de CG évalués, levées prématurées, incidents, risque réel.
+    \item Gain opérationnel \emph{par alerte} (le bon chiffre, cohérent avec le protocole).
+    \item Comparaison avec la baseline 30 min.
+    \item Liste des incidents avec sélecteur pour ouvrir la \textbf{timeline visuelle}.
+    \item Risque empirique non-paramétrique en bas.
+    \item Synthèse par aéroport.
+\end{itemize}
+
+Sur la timeline d'un incident, on voit :
+\begin{itemize}
+    \item \textbf{étoile rouge} = CG dangereux $<3$ km ;
+    \item \textbf{ligne verte} = notre levée prédite à $T_q$ ;
+    \item \textbf{ligne rouge pointillée} = arrivée du prochain CG ;
+    \item \textbf{bande rose} = fenêtre \og off-alerte \fg{}.
+\end{itemize}
+
+C'est l'outil que le jury peut utiliser pour explorer librement.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Streamlit} = framework Python pour faire un dashboard web rapidement.
+
+L'idée : le jury peut bouger le slider $q$ pour voir comment le compromis gain/risque
+évolue. C'est une démonstration interactive, plus parlante qu'un tableau statique.
+
+\textbf{Si le jury demande de voir la démo} : tu lances \texttt{streamlit run app.py}
+dans un terminal, ça ouvre une page web locale. Tu sélectionnes $q = 0{,}95$, tu cliques
+sur \og Lancer l'évaluation \fg{}, et tu navigues dans les incidents.
+\end{compr}
+
+\begin{transit}
+\og Pour conclure, voyons les limites et perspectives. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 20 — Limites et perspectives}
+
+\begin{dire}
+\og \textbf{Limites assumées de notre travail :}
+\begin{itemize}
+    \item Les données sont censurées à 30 min par construction (on ne voit pas les gaps
+    intra-alerte supérieurs à 30 min).
+    \item Pas de données météo externes : pas de vent, pas de pression, pas d'humidité.
+    \item Calibration sur le test (idéalement il faudrait 3 splits : train / calibration / test).
+    \item Le modèle est statique : il faudrait un re-fit annuel pour absorber la dérive climatique.
+    \item Pour le protocole officiel, la confidence $S(30 \mid X)$ ne suffit pas à atteindre
+    $R < 2 \%$ — il faudrait un classifieur secondaire dédié.
+\end{itemize}
+
+\textbf{Prochaines étapes :}
+\begin{itemize}
+    \item Intégrer la météo via l'API de Météo France ou ECMWF.
+    \item Tester l'option \texttt{ancillary} de lifelines (le paramètre $k$ variable selon $X$).
+    \item Pipeline de re-calibration mensuelle automatisé.
+    \item Validation A/B en production avant déploiement.
+    \item \textbf{Classifieur dédié \og dernier CG \fg{}} pour améliorer la confidence
+    et atteindre les 2 \% du protocole.
+\end{itemize}
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Censure à droite} : on l'a déjà dit — on ne voit pas les gaps $>30$ min intra-alerte.
+
+\textbf{Dérive climatique} : le climat change. Un modèle entraîné sur 2016-2022 peut devenir
+moins bon en 2030 si la fréquence ou l'intensité des orages change. Le re-fit annuel
+permet de maintenir la qualité.
+
+\textbf{Validation A/B} : en production, tu ne déploies pas direct. Tu mets le modèle en
+shadow mode (il prédit mais ne lève rien) pendant quelques mois pour comparer ses
+décisions à la baseline. Si les chiffres sont bons, tu déploies pour de bon.
+\end{compr}
+
+\begin{piege}
+\textbf{Q : Pourquoi avoir limité $T_q$ à 30 min ? Vous brident le modèle.}
+
+R : C'est un choix de \og safety net \fg{}. La baseline Météorage à 30 min est statistiquement
+calibrée pour 1 \% de risque sur le critère 20 km. Si le modèle propose un $T_q$ supérieur à
+30 min, on préfère garder 30 min — on ne veut jamais être \emph{moins prudent} que la
+baseline. C'est une décision opérationnelle, pas mathématique.
+\end{piege}
+
+\begin{transit}
+\og En résumé. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 21 — En résumé}
+
+\begin{dire}
+\og Trois grands points pour conclure.
+
+\textbf{Ce qu'on a fait :}
+\begin{itemize}
+    \item Un \textbf{Weibull AFT} entraîné par maximum de vraisemblance qui gère la censure
+    nativement, avec 17 variables contextuelles dont le rythme passé concentre 57 \% du
+    pouvoir prédictif.
+    \item Une \textbf{calibration empirique robuste} (winsorization + monotonicité) pour
+    aligner le risque annoncé sur le risque réel.
+    \item Une \textbf{vérification non-paramétrique indépendante} qui confirme les résultats.
+    \item Une \textbf{reproduction fidèle du protocole officiel Data Battle} (sweep $\theta$
+    sur \texttt{predictions.csv}).
+\end{itemize}
+
+\textbf{Ce qu'on gagne sur eval 2023-25 :}
+\begin{itemize}
+    \item Protocole officiel sweep $\theta$ : risque 3,61 \% à $\theta = 0{,}95$, gain 26 h.
+    \item Borne oracle (last CG connu) : risque 0,60 \%, gain $\sim$ 330 h.
+    \item Baseline 30 min Météorage : 1,04 \% de risque (référence).
+    \item Démo Streamlit pour visualiser chaque cas concret.
+\end{itemize}
+
+\textbf{Validation indépendante :} risque empirique non-paramétrique cohérent avec le
+modèle paramétrique. Démo interactive permet au jury d'inspecter chaque cas.
+\fg{}
+\end{dire}
+
+\begin{compr}
+\textbf{Les 3 chiffres à retenir pour le jury :}
+\begin{enumerate}
+    \item \textbf{3,61 \% / 26 h} : ce qu'on obtient en suivant exactement le protocole officiel
+    (sweep $\theta$ sur \texttt{predictions.csv}).
+    \item \textbf{0,60 \% / 330 h} : la borne de potentiel du modèle si on connaissait le
+    dernier CG.
+    \item \textbf{1,04 \%} : la baseline Météorage 30 min (référence).
+\end{enumerate}
+
+Le message : on a un modèle solide mais la mécanique de \og décision opérationnelle \fg{}
+(quand lever pour de bon) demande encore un travail spécifique (le classifieur \og dernier CG \fg{}).
+\end{compr}
+
+\begin{transit}
+\og Merci. \fg{}
+\end{transit}
+
+% ==========================================================================
+\section{Slide 22 — Merci}
+
+\begin{dire}
+\og Merci pour votre attention.
+
+Le code, le rapport, la présentation et la démo Streamlit sont à disposition pour les
+questions. \fg{}
+\end{dire}
+
+\begin{compr}
+Si silence du jury : \og On reste à disposition pour les questions. \fg{}
+Si question hostile : reste calme, reformule la question, prends 2 secondes pour réfléchir,
+puis réponds. Si tu ne sais pas, dis-le.
+\end{compr}
+
+% ==========================================================================
+\section*{Mémo express — 1 minute avant l'oral}
+
+\begin{tcolorbox}[colback=red!4, colframe=red!50!black, title=\textbf{Les 5 phrases-clés à ne pas oublier}]
+\begin{enumerate}
+    \item Modèle \textbf{Weibull AFT} entraîné par MLE qui gère la censure à 30 min nativement.
+    \item \textbf{17 variables}, le rythme (rolling\_gap\_5) concentre 57 \% du pouvoir prédictif.
+    \item \textbf{Calibration robuste} : winsorization + monotonicité ($c_{95} = 2{,}02$).
+    \item \textbf{Protocole officiel reproduit} dans \texttt{Evaluation\_databattle\_weibull.ipynb}.
+    \item Résultats : \textbf{3,61 \% / 26 h} (sweep réaliste), \textbf{0,60 \% / 330 h} (borne oracle).
+\end{enumerate}
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=blue!4, colframe=blue!50!black, title=\textbf{Lancer la démo}]
+\texttt{streamlit run app.py}
+
+(à lancer dans un terminal positionné dans \texttt{oral\_projet/})
+\end{tcolorbox}
+
+\end{document}
