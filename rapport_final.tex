@@ -772,6 +772,89 @@ Pour respecter la cible 5\% du protocole officiel, il faudrait calibrer $q$ enco
 descendre sous la baseline Météorage en cas de doute.
 \end{tcolorbox}
 
+\subsection{Évaluation selon le protocole officiel : sweep sur $\theta$}
+\label{sec:sweep_theta}
+
+Pour s'aligner exactement sur la procédure d'évaluation prévue par le jury du Data Battle
+(\texttt{Evaluation\_databattle\_meteorage.ipynb}), nous reproduisons sa boucle en trois parties
+dans le notebook \texttt{Evaluation\_databattle\_weibull.ipynb} :
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Part 1 — génération.} Pour chaque CG de l'eval, on émet une prédiction au format
+    officiel \texttt{predictions.csv} avec :
+    \[
+    \hat t^a_i \;=\; \text{date}(CG_i) + T_{0.95}^{\text{calibré}}(X_i), \qquad
+    s^a_i \;=\; S_{\text{Weibull}}(30 \mid X_i)
+    \]
+    La \texttt{confidence} $s^a_i$ est la probabilité prédite par le modèle qu'aucun CG ne suive
+    dans les 30 minutes (donc que ce CG soit le dernier de l'alerte). C'est une quantité
+    \emph{monotone en position dans l'alerte} : faible au début (un autre CG est attendu), élevée
+    à la fin.
+    \item \textbf{Part 2 — sweep.} Pour chaque $\theta \in \{0, 0{,}05, \dots, 0{,}95\}$, on garde
+    les prédictions avec $s \geq \theta$, on prend la plus précoce par alerte, et on calcule
+    le couple (gain, risque).
+    \item \textbf{Part 3 — sélection.} On choisit le $\theta$ qui maximise le gain sous
+    $R < R_{\text{accept}} = 2\%$.
+\end{enumerate}
+
+\paragraph{Résultats du sweep.}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ccc}
+\toprule
+\textbf{$\theta$} & \textbf{Risque} & \textbf{Gain cumulé} \\
+\midrule
+0,00 & 97,59\%  & 1\,125\,h \\
+0,05 & 41,45\%  &    278\,h \\
+0,20 & 19,45\%  &    119\,h \\
+0,50 & 15,24\%  &     76\,h \\
+0,70 &  7,92\%  &     60\,h \\
+0,75 &  4,06\%  &     53\,h \\
+0,90 &  3,91\%  &     36\,h \\
+\textbf{0,95} & \textbf{3,61\%} & \textbf{26\,h} \\
+\bottomrule
+\end{tabular}
+\caption{Sweep sur $\theta$ — protocole officiel reproduit. Le risque descend monotonement de
+97,59\% à 3,61\% quand $\theta$ croît.}
+\label{tab:sweep_theta}
+\end{table}
+
+\paragraph{Interprétation.} La forme attendue est obtenue : à mesure que $\theta$ croît, on filtre
+les prédictions provenant de CG en milieu d'alerte (faible $S(30|X)$) et on ne garde que celles
+des CG terminaux. Le risque s'effondre (de 97,59\% à 3,61\%) tandis que le gain décroît en parallèle
+(1\,125\,h à 26\,h).
+
+\begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Honnêteté scientifique}]
+\textbf{Aucune valeur de $\theta$ n'atteint $R < 2\%$ avec ce mapping.} Le minimum est
+$R = 3{,}61\%$ à $\theta = 0{,}95$ pour un gain de 26 heures.
+
+Cela tient au fait que \texttt{confidence} $= S(30|X)$ est un signal \emph{utile mais imparfait}
+pour identifier les CG terminaux. Quelques CG en milieu d'alerte ont une survie élevée par hasard
+(orages denses où on aurait dû attendre).
+
+\textbf{À titre comparatif}, en exploitant l'information ground-truth \texttt{is\_last == True}
+(une seule prédiction par alerte au dernier CG observé), on obtient à $q = 0{,}95$ :
+\begin{itemize}[topsep=2pt]
+    \item Risque officiel : $12/1\,995 = \mathbf{0{,}60\%}$ (CG + IC, conforme au protocole) ;
+    \item Gain cumulé : $\approx \mathbf{330\ \text{heures}}$.
+\end{itemize}
+La différence quantifie le \og coût d'incertitude opérationnelle \fg{} : on ne connaît pas
+en temps réel quel CG sera le dernier.
+\end{tcolorbox}
+
+\paragraph{Pistes d'amélioration de la confidence.} Pour rapprocher le résultat du sweep officiel
+de la mesure oracle ($0{,}60\%$), on pourrait :
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Combiner plusieurs signaux} : $S(30|X)$, le quantile $T_q$, le \texttt{rolling\_gap\_5},
+    le rang du CG dans l'alerte ;
+    \item \textbf{Entraîner un classifieur secondaire} (logistic / gradient boosting) sur la cible
+    \og ce CG est-il le dernier ? \fg{} et utiliser sa proba en sortie comme \texttt{confidence} ;
+    \item \textbf{Ajouter un cap dur à 30 min} : ne jamais lever avant 30 minutes même quand
+    $\hat t^a_i$ est plus court (évite les incidents triviaux sur CG isolés du début d'alerte).
+\end{itemize}
+
 % ===============================================================
 \section{Conclusion}
 
@@ -790,6 +873,20 @@ descendre sous la baseline Météorage en cas de doute.
 \medskip
 
 \textbf{Cohérence des 2 approches :} Weibull paramétrique et empirique non-paramétrique se rejoignent. La règle des 30 minutes de Météorage est \textbf{statistiquement bien dimensionnée} pour 1\% de risque résiduel. Le projet apporte un gain significatif pour les seuils relâchés (5\% et 10\%).
+
+\medskip
+
+\textbf{Évaluation sur eval 2023-25 selon le protocole officiel (sweep sur $\theta$, voir
+section~\ref{sec:sweep_theta}) :}
+\begin{itemize}[leftmargin=*,topsep=2pt]
+    \item Le risque décroît monotonement de \textbf{97,59\%} ($\theta=0$) à \textbf{3,61\%}
+    ($\theta=0,95$) au fur et à mesure que l'on filtre les prédictions à faible
+    $S(30 \mid X)$ ;
+    \item Le seuil $R < 2\%$ du protocole officiel n'est pas atteint avec la confidence
+    $S(30 \mid X)$ seule — un meilleur classifieur \og dernier CG \fg{} reste à concevoir ;
+    \item En mode oracle (une prédiction par alerte au dernier CG observé), on obtient
+    $R = 0{,}60\%$ et gain $\sim 330$\,h à $q = 0{,}95$, ce qui borne le potentiel du modèle.
+\end{itemize}
 \end{tcolorbox}
 
 % ===============================================================
@@ -822,9 +919,14 @@ Le notebook \texttt{weibull\_final.ipynb} est organisé en 19 sections :
 \section{Annexe : fichiers livrés}
 
 \begin{itemize}[leftmargin=*,topsep=2pt]
-    \item \texttt{weibull\_final.ipynb} : notebook complet, ré-exécutable
-    \item \texttt{presentation\_weibull.pptx} : présentation orale (22 slides)
-    \item \texttt{plot\_ppt/} : tous les graphiques en PNG haute résolution
+    \item \texttt{weibull\_final.ipynb} : notebook complet (théorie + calibration train)
+    \item \texttt{Weibull\_final3km.ipynb} : évaluation sur eval, mesure dynamique CG / 3 km
+    \item \texttt{Evaluation\_databattle\_weibull.ipynb} : reproduction fidèle du protocole
+    officiel du Data Battle (sweep $\theta$ sur \texttt{predictions.csv})
+    \item \texttt{meteorage\_model.py} : module Python réutilisable (load, features, fit)
+    \item \texttt{app.py} : démo Streamlit interactive
+    \item \texttt{presentation\_oral.pptx} : présentation orale
+    \item \texttt{script\_oral.tex} : script complet de l'oral
     \item \texttt{rapport\_final.tex} : ce document
 \end{itemize}
 

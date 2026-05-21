@@ -522,17 +522,25 @@ après $T_q$ (donc on aurait levé trop tôt) \emph{et} ce CG est dangereux ($<3
 \end{tabular}
 \end{table}
 
-\subsection{Deux mesures complémentaires}
+\subsection{Trois mesures complémentaires}
 
 \noindent\begin{tcolorbox}[colback=blue!5,colframe=blue!50!black,title=\textbf{Important : distinction}]
-On peut mesurer le risque de deux façons. Les deux sont valides et complémentaires.
+On peut mesurer le risque de trois façons. Toutes sont valides et complémentaires.
 
-\textbf{1. Mesure dynamique (à chaque CG)} : la mesure ci-dessus. Simule \og que se passerait-il si on appliquait
-$T_q$ à chaque CG \fg{}. C'est ce que la démo Streamlit visualise.
+\textbf{1. Mesure dynamique (à chaque CG)} : la mesure ci-dessus. Simule \og que se passerait-il
+si on appliquait $T_q$ à chaque CG \fg{}. C'est ce que la démo Streamlit visualise.
 
-\textbf{2. Protocole officiel (1 prédiction par alerte au last CG)} : on émet une prédiction unique par alerte
-au format \texttt{predictions.csv} et on compte les éclairs $<3$ km arrivant après la fin prédite. À $q=0{,}95$ :
-risque officiel $= 0{,}60$ \% (12 / 1 995), gain $\approx 330$ heures.
+\textbf{2. Protocole officiel oracle (1 prédiction par alerte au last CG ground-truth)} :
+on émet une prédiction unique par alerte au format \texttt{predictions.csv} et on compte les
+éclairs $<3$ km arrivant après la fin prédite. À $q=0{,}95$ :
+risque officiel $= 0{,}60$ \% (12 / 1\,995), gain $\approx 330$ heures.
+
+\textbf{3. Protocole officiel \emph{sweep} (réaliste, sans info de last CG)} :
+notebook \texttt{Evaluation\_databattle\_weibull.ipynb}. On émet une prédiction à chaque CG
+avec \texttt{confidence}~$= S(30 \mid X)$, puis sweep sur $\theta$.
+Meilleur point opérationnel : $\theta = 0{,}95 \Rightarrow R = 3{,}61\%$, gain $= 26$\,h.
+Aucun $\theta$ n'atteint $R < 2\%$ avec cette confidence — la marge entre les mesures 2 et 3
+quantifie la difficulté d'identifier en temps réel quel CG sera le dernier.
 \end{tcolorbox}
 
 \subsection{Exemples concrets d'incidents (à $q=0{,}95$)}
@@ -558,6 +566,42 @@ Biarritz & Biarritz\_776  & 1,97 min  & 9,28 min  & $+7{,}32$ min  & 2,45 km \\
 CG observé. En réalité, le prochain CG est arrivé 35 min plus tard, à 1,87 km de l'aéroport. Si on avait
 levé l'alerte à 2,75 min, l'aéroport aurait été en opérations sol pendant 33 minutes avant qu'un éclair
 dangereux frappe. \fg{}
+
+\subsection{Reproduction fidèle du protocole officiel (sweep $\theta$)}
+
+\textbf{À dire à l'oral} : \og Pour valider notre approche selon la procédure exacte du jury, nous avons
+reproduit le notebook officiel dans \texttt{Evaluation\_databattle\_weibull.ipynb}. Une prédiction est
+émise à chaque CG avec une confidence définie comme $S(30 \mid X)$ — la probabilité prédite par le
+modèle qu'aucun CG ne suive dans les 30 minutes. Puis on fait un sweep sur le seuil $\theta$. \fg{}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{ccc}
+\toprule
+\textbf{$\theta$} & \textbf{Risque} & \textbf{Gain} \\
+\midrule
+0{,}00 & 97{,}59\% & 1\,125\,h \\
+0{,}50 & 15{,}24\% &     76\,h \\
+0{,}75 &  4{,}06\% &     53\,h \\
+0{,}90 &  3{,}91\% &     36\,h \\
+\textbf{0{,}95} & \textbf{3{,}61\%} & \textbf{26\,h} \\
+\bottomrule
+\end{tabular}
+\caption{Sweep $\theta$ — protocole officiel reproduit sur eval 2023-25.}
+\end{table}
+
+\textbf{Lecture} :
+\og La courbe est monotone, comme attendu. À $\theta = 0$ on conserve toutes les prédictions et le
+risque est très élevé car la prédiction la plus précoce provient du premier CG de l'alerte. En
+filtrant sur $\theta$, on ne garde que les CG dont le modèle estime qu'ils sont probablement les
+derniers, ce qui fait chuter le risque jusqu'à $3{,}6\%$ à $\theta = 0{,}95$. \fg{}
+
+\textbf{Honnêteté scientifique} : la cible officielle $R < 2\%$ n'est pas atteinte avec ce mapping
+de confidence. Le minimum est $3{,}61\%$. La marge entre ce résultat et l'oracle ($0{,}60\%$ à
+$q = 0{,}95$ section 8 de \texttt{Weibull\_final3km.ipynb}) mesure la difficulté à identifier en
+temps réel quel CG sera le dernier. Une piste d'amélioration : un classifieur secondaire entraîné
+sur la cible \og dernier CG \fg{} pour produire une meilleure confidence.
 
 % =========================================================================
 \section{Risque empirique non-paramétrique adapté à 3 km}
@@ -632,7 +676,10 @@ streamlit run app.py
 \og Notre Weibull AFT calibré, validé indépendamment par une analyse non-paramétrique, prédit pour chaque
 éclair un temps d'attente adapté au contexte de l'orage. Sur eval 2023-25, à $q=0{,}95$ :
 \begin{itemize}[topsep=0pt]
-    \item Protocole officiel : \textbf{0,60 \% de risque} sur les éclairs $<3$ km, gain $\sim$ 330 heures.
+    \item Protocole officiel oracle (1 pred / alerte au last CG) : \textbf{0,60 \%} de risque,
+    gain $\sim$ 330 heures.
+    \item Protocole officiel sweep $\theta$ (réaliste, sans info ground-truth) : minimum
+    $\mathbf{R = 3{,}61\%}$ à $\theta = 0{,}95$ pour 26 heures de gain.
     \item Mesure dynamique : \textbf{37 incidents visualisables} dans la démo Streamlit.
 \end{itemize}
 La démo permet d'inspecter chaque incident en détail. Le code, le rapport et la présentation sont fournis. Merci. \fg{}
@@ -643,7 +690,9 @@ La démo permet d'inspecter chaque incident en détail. Le code, le rapport et l
 \section{Annexe — fichiers livrés}
 
 \begin{itemize}[leftmargin=*]
-    \item \texttt{Weibull\_final3km.ipynb} : notebook principal d'évaluation 3 km
+    \item \texttt{Weibull\_final3km.ipynb} : notebook principal d'évaluation 3 km (mesure dynamique)
+    \item \texttt{Evaluation\_databattle\_weibull.ipynb} : reproduction du protocole officiel
+    du Data Battle, sweep $\theta$ sur \texttt{predictions.csv}
     \item \texttt{weibull\_final.ipynb} : notebook de base (théorie + calibration sur train)
     \item \texttt{app.py} : démo Streamlit (lancer \texttt{streamlit run app.py})
     \item \texttt{meteorage\_model.py} : module Python réutilisable (load, features, fit)
