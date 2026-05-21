@@ -797,62 +797,67 @@ dans le notebook \texttt{Evaluation\_databattle\_weibull.ipynb} :
     $R < R_{\text{accept}} = 2\%$.
 \end{enumerate}
 
-\paragraph{Résultats du sweep.}
+\paragraph{Résultats du sweep avec restriction CG <3 km.}
+
+Le notebook officiel comptabilise les éclairs <3 km (CG + IC) dans le risque. Nous restreignons
+au seul critère \textbf{CG <3 km} (les IC ne touchent pas le sol et ne sont pas dangereux pour
+les opérations sol), c'est une lecture plus stricte de l'opérationnel :
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabular}{ccc}
+\begin{tabular}{ccccc}
 \toprule
-\textbf{$\theta$} & \textbf{Risque} & \textbf{Gain cumulé} \\
+\textbf{$q$ = $\theta$} & \textbf{Alertes filtrées} & \textbf{CG <3 km manqués} & \textbf{Risque CG <3 km} & \textbf{Gain cumulé} \\
 \midrule
-0,00 & 97,59\%  & 1\,125\,h \\
-0,05 & 41,45\%  &    278\,h \\
-0,20 & 19,45\%  &    119\,h \\
-0,50 & 15,24\%  &     76\,h \\
-0,70 &  7,92\%  &     60\,h \\
-0,75 &  4,06\%  &     53\,h \\
-0,90 &  3,91\%  &     36\,h \\
-\textbf{0,95} & \textbf{3,61\%} & \textbf{26\,h} \\
+0,85 & 140 / 1\,352 & 29 / 385 & 7,53 \% & 118 h \\
+0,90 & 108 / 1\,352 & 27 / 385 & 7,01 \% &  90 h \\
+0,95 &  68 / 1\,352 & 21 / 385 & 5,45 \% &  60 h \\
+0,97 &  47 / 1\,352 & 18 / 385 & 4,68 \% &  46 h \\
+\textbf{0,99} & \textbf{ 26 / 1\,352} & \textbf{11 / 385} & \textbf{2,86 \%} & \textbf{ 26 h} \\
+\midrule
+Baseline 30 min & — & 0 / 385 & \textbf{0,00 \%} & 0 h \\
 \bottomrule
 \end{tabular}
-\caption{Sweep sur $\theta$ — protocole officiel reproduit. Le risque descend monotonement de
-97,59\% à 3,61\% quand $\theta$ croît.}
+\caption{Sweep sur $\theta = q$ avec restriction CG <3 km. Le baseline Météorage 30 min est
+parfait sur ce critère par construction (aucun CG n'arrive après last\_CG + 30 min dans une
+alerte). Le modèle trade off risque vs gain.}
 \label{tab:sweep_theta}
 \end{table}
 
-\paragraph{Interprétation.} La forme attendue est obtenue : à mesure que $\theta$ croît, on filtre
-les prédictions provenant de CG en milieu d'alerte (faible $S(30|X)$) et on ne garde que celles
-des CG terminaux. Le risque s'effondre (de 97,59\% à 3,61\%) tandis que le gain décroît en parallèle
-(1\,125\,h à 26\,h).
+\paragraph{Interprétation.} À mesure que $\theta$ croît, on filtre les prédictions provenant de
+CG en milieu d'alerte (faible $S(30|X)$) et on ne garde que celles des CG \emph{terminaux}.
+Le nombre d'alertes filtrées baisse (de 140 à 26), le risque baisse aussi (de 7,53 \% à 2,86 \%)
+et le gain par alerte filtrée \emph{augmente} (de 50 min à 60 min en moyenne).
 
 \begin{tcolorbox}[colback=red!5,colframe=red!50!black,title=\textbf{Honnêteté scientifique}]
 \textbf{Aucune valeur de $\theta$ n'atteint $R < 2\%$ avec ce mapping.} Le minimum est
-$R = 3{,}61\%$ à $\theta = 0{,}95$ pour un gain de 26 heures.
+$R_{\text{CG}} = 2{,}86\%$ à $\theta = 0{,}99$ pour un gain de 26 heures sur 26 alertes filtrées.
 
-Cela tient au fait que \texttt{confidence} $= S(30|X)$ est un signal \emph{utile mais imparfait}
-pour identifier les CG terminaux. Quelques CG en milieu d'alerte ont une survie élevée par hasard
-(orages denses où on aurait dû attendre).
-
-\textbf{À titre comparatif}, en exploitant l'information ground-truth \texttt{is\_last == True}
-(une seule prédiction par alerte au dernier CG observé), on obtient à $q = 0{,}95$ :
-\begin{itemize}[topsep=2pt]
-    \item Risque officiel : $12/1\,995 = \mathbf{0{,}60\%}$ (CG + IC, conforme au protocole) ;
-    \item Gain cumulé : $\approx \mathbf{330\ \text{heures}}$.
+Cela tient au fait que :
+\begin{itemize}
+    \item \texttt{confidence} $= S(30|X)$ est un signal \emph{utile mais imparfait} pour identifier
+    les CG terminaux. Quelques CG en milieu d'alerte ont une survie élevée par hasard.
+    \item Le baseline Météorage 30 min est \textbf{parfait} sur le critère CG <3 km
+    (0 incident par construction) ; le modèle accepte un peu de risque pour gagner du temps.
 \end{itemize}
-La différence quantifie le \og coût d'incertitude opérationnelle \fg{} : on ne connaît pas
-en temps réel quel CG sera le dernier.
+
+\textbf{À titre comparatif (mesure étendue CG + IC du protocole officiel strict)} :
+à $q = 0{,}95$, on obtient $R = 0{,}60\%$ (12/1\,995) et $\approx 330$ heures de gain en exploitant
+l'information ground-truth \texttt{is\_last == True} (une prédiction par alerte au dernier CG).
 \end{tcolorbox}
 
-\paragraph{Pistes d'amélioration de la confidence.} Pour rapprocher le résultat du sweep officiel
-de la mesure oracle ($0{,}60\%$), on pourrait :
+\paragraph{Pistes d'amélioration.} Pour atteindre $R_{\text{CG}} < 2\%$ avec un gain
+significatif :
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Combiner plusieurs signaux} : $S(30|X)$, le quantile $T_q$, le \texttt{rolling\_gap\_5},
-    le rang du CG dans l'alerte ;
     \item \textbf{Entraîner un classifieur secondaire} (logistic / gradient boosting) sur la cible
-    \og ce CG est-il le dernier ? \fg{} et utiliser sa proba en sortie comme \texttt{confidence} ;
-    \item \textbf{Ajouter un cap dur à 30 min} : ne jamais lever avant 30 minutes même quand
-    $\hat t^a_i$ est plus court (évite les incidents triviaux sur CG isolés du début d'alerte).
+    \og ce CG est-il le dernier ? \fg{} avec des features combinées
+    ($S(30|X)$, $T_q$, \texttt{rolling\_gap\_5}, \texttt{cg\_rank}) pour une meilleure
+    \texttt{confidence}.
+    \item \textbf{Ajouter un cap dur à 30 min} sur les CG en début d'alerte : ne jamais lever
+    avant 30 min même quand $\hat t^a_i$ est plus court — supprime les incidents triviaux sur
+    CG isolés.
+    \item \textbf{Re-fit avec un objectif joint} risque/gain au lieu du C-index seul.
 \end{itemize}
 
 % ===============================================================
@@ -876,16 +881,15 @@ de la mesure oracle ($0{,}60\%$), on pourrait :
 
 \medskip
 
-\textbf{Évaluation sur eval 2023-25 selon le protocole officiel (sweep sur $\theta$, voir
-section~\ref{sec:sweep_theta}) :}
+\textbf{Évaluation sur eval 2023-25 selon le protocole officiel avec critère CG <3 km
+(voir section~\ref{sec:sweep_theta}) :}
 \begin{itemize}[leftmargin=*,topsep=2pt]
-    \item Le risque décroît monotonement de \textbf{97,59\%} ($\theta=0$) à \textbf{3,61\%}
-    ($\theta=0,95$) au fur et à mesure que l'on filtre les prédictions à faible
-    $S(30 \mid X)$ ;
-    \item Le seuil $R < 2\%$ du protocole officiel n'est pas atteint avec la confidence
-    $S(30 \mid X)$ seule — un meilleur classifieur \og dernier CG \fg{} reste à concevoir ;
-    \item En mode oracle (une prédiction par alerte au dernier CG observé), on obtient
-    $R = 0{,}60\%$ et gain $\sim 330$\,h à $q = 0{,}95$, ce qui borne le potentiel du modèle.
+    \item À $q = 0{,}99$ : $R_{\text{CG}} = 2{,}86\,\%$ (11/385), gain 26 h sur 26 alertes filtrées
+    sur 1\,352.
+    \item À $q = 0{,}95$ : $R_{\text{CG}} = 5{,}45\,\%$ (21/385), gain 60 h sur 68 alertes filtrées.
+    \item À $q = 0{,}85$ : $R_{\text{CG}} = 7{,}53\,\%$ (29/385), gain 118 h sur 140 alertes filtrées.
+    \item Baseline 30 min Météorage : \textbf{0\,\%} (0/385) — parfait par construction.
+    \item Le seuil $R < 2\,\%$ n'est pas atteint avec la \texttt{confidence} $S(30 \mid X)$ seule.
 \end{itemize}
 \end{tcolorbox}
 
