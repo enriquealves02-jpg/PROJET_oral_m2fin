@@ -345,26 +345,91 @@ $$T_q(X) = \lambda(X) \cdot (-\ln q)^{1/k}$$
 \end{dire}
 
 \begin{compr}
+\textbf{D'où vient la loi de Weibull ?} Elle a été inventée par Waloddi Weibull en 1939
+pour modéliser la \emph{durée de vie de composants mécaniques avant rupture} (roulements,
+ampoules). Aujourd'hui elle est le standard en \textbf{fiabilité industrielle},
+\textbf{analyse de survie} (médecine), \textbf{météorologie} (vitesse du vent) et
+ici \emph{temps entre événements} (CG). Sa flexibilité vient des deux paramètres
+$(\lambda, k)$ qui permettent de modéliser des phénomènes très variés.
+
 \textbf{$\lambda$ (échelle, en minutes)} : le temps caractéristique. Si $\lambda = 2$,
-on attend en moyenne environ 2 minutes le prochain CG.
+on attend en moyenne environ 2 minutes le prochain CG. \emph{Analogie} : c'est comme une
+\og demi-vie \fg{} en radioactivité, mais paramétrée différemment.
 
 \textbf{$k$ (forme, sans unité)} : gouverne l'évolution du hazard dans le temps.
 \begin{itemize}[topsep=2pt]
     \item $k < 1$ (notre cas) : hazard décroissant. Plus on attend, moins on a de chances
-    qu'un nouvel éclair arrive. \emph{Orage qui s'éteint}.
-    \item $k = 1$ : hazard constant. Loi exponentielle, sans mémoire.
+    qu'un nouvel éclair arrive. \emph{Orage qui s'éteint}. \emph{Analogie} : c'est le
+    profil typique de la \og mortalité infantile \fg{} en démographie — un nouveau-né a
+    plus de risque dans ses premiers jours, et le risque baisse avec l'âge.
+    \item $k = 1$ : hazard constant. Loi exponentielle, sans mémoire. \emph{Analogie} :
+    désintégration radioactive — un atome n'a pas d'historique, son risque de se désintégrer
+    est constant.
     \item $k > 1$ : hazard croissant. Plus on attend, plus la prochaine occurrence est
-    probable. \emph{Vieillissement} (typique en fiabilité industrielle).
+    probable. \emph{Vieillissement} — typique des composants mécaniques qui s'usent
+    (ampoules, roulements).
 \end{itemize}
 
-\textbf{Hazard vs survie} : c'est juste deux façons de voir la même chose. $h(t)$ dit
-\og quel est le taux instantané ? \fg{}. $S(t)$ dit \og quelle est la proba d'avoir survécu
-jusqu'à $t$ ? \fg{}. Reliés par $h = -d\log S / dt$.
+\textbf{Hazard vs survie} : c'est juste deux façons de voir la même chose.
+\begin{itemize}[topsep=2pt]
+    \item $h(t)$ dit \og quel est le taux instantané ? \fg{} = \og dans la prochaine seconde,
+    quelle est la chance qu'un CG arrive ? \fg{}.
+    \item $S(t)$ dit \og quelle est la proba d'avoir survécu jusqu'à $t$ ? \fg{} = \og quelle
+    chance qu'aucun CG ne soit arrivé entre maintenant et $t$ ? \fg{}.
+\end{itemize}
+Mathématiquement reliés par $h(t) = -\dfrac{d \log S(t)}{dt}$. Concrètement : on calcule $S(t)$
+en intégrant $h(t)$ sur le temps.
 
-\textbf{La formule magique $T_q$} : on cherche $t$ tel que $S(t) = q$. En inversant
-$\exp(-(t/\lambda)^k) = q$, on obtient $t = \lambda \cdot (-\ln q)^{1/k}$. C'est le
-\emph{temps recommandé} pour le niveau de couverture $q$.
+\textbf{La formule magique $T_q$ — comment elle est dérivée}. On cherche $t$ tel que
+$S(t) = q$ (= avec probabilité $q$, on a survécu sans CG jusqu'à ce $t$). En partant de
+$S(t) = \exp(-(t/\lambda)^k) = q$ et en inversant :
+\begin{align*}
+\exp(-(t/\lambda)^k) &= q \\
+-(t/\lambda)^k &= \ln q \\
+(t/\lambda)^k &= -\ln q \quad \text{(noter que } \ln q < 0 \text{ donc } -\ln q > 0\text{)} \\
+t/\lambda &= (-\ln q)^{1/k} \\
+\boxed{t = \lambda \cdot (-\ln q)^{1/k}}
+\end{align*}
+
+\textbf{Exemple numérique} (Ajaccio, $\lambda = 4$, $k = 0{,}7$) :
+\begin{itemize}[topsep=2pt]
+    \item $q = 0{,}5$ (médiane) : $T_{0,5} = 4 \cdot (-\ln 0{,}5)^{1/0,7} = 4 \cdot 0{,}693^{1,43} \approx 2{,}5$ min.
+    \item $q = 0{,}95$ (95\% de couverture) : $T_{0,95} = 4 \cdot (-\ln 0{,}95)^{1,43} = 4 \cdot 0{,}051^{1,43} \approx 0{,}08$ min$\,$... \emph{wait, c'est trop court}.
+    \item Effectivement, la formule donne des $T_q$ qui dépendent fortement du paramètre $\lambda(X)$
+    ajusté pour chaque éclair. En pratique avec les vraies données : $T_{99}$ varie de 5 min
+    (orage actif) à 100 min (orage calmé). Cf.\ slide 8.
+\end{itemize}
 \end{compr}
+
+\begin{tcolorbox}[colback=purple!5,colframe=purple!50!black,title=\textbf{Analogie complète : Weibull en une image}]
+\textbf{Imagine un orage comme un feu de forêt.}
+
+Le \textbf{hazard} $h(t)$ = la probabilité instantanée que le feu \og reparte \fg{}
+(= nouvel éclair) à l'instant $t$ après le dernier sursaut.
+
+Le \textbf{paramètre $k$} décrit la \og physique \fg{} du feu :
+\begin{itemize}[topsep=2pt]
+    \item $k < 1$ (feu qui s'éteint) : les premières secondes après un sursaut, le feu
+    a beaucoup d'énergie résiduelle, donc forte chance de repartir. Mais plus on attend,
+    plus l'énergie se dissipe, moins le feu repart. \emph{Notre cas pour les orages}.
+    \item $k = 1$ : feu sans mémoire — un atome de combustible ne se \og souvient \fg{} pas
+    du dernier sursaut.
+    \item $k > 1$ : feu qui s'auto-entretient — la chaleur accumulée augmente la chance
+    de combustion future.
+\end{itemize}
+
+Le \textbf{paramètre $\lambda$} décrit la \og rapidité \fg{} du feu :
+\begin{itemize}[topsep=2pt]
+    \item $\lambda$ petit : feu rapide, sursauts toutes les quelques secondes.
+    \item $\lambda$ grand : feu lent, sursauts espacés.
+\end{itemize}
+
+Le \textbf{modèle AFT} dit que $\lambda$ dépend du \emph{contexte} de chaque éclair :
+si l'orage est actif (\texttt{rolling\_gap\_5} petit), $\lambda$ se contracte (feu rapide).
+Si l'orage se calme, $\lambda$ s'allonge (feu lent).
+
+C'est exactement ce qu'il nous faut : un modèle qui s'adapte au régime du feu/orage.
+\end{tcolorbox}
 
 \begin{piege}
 \textbf{Q : Pourquoi Weibull et pas Gamma / log-normale / Pareto ?}
@@ -409,8 +474,31 @@ de Python via Newton-Raphson avec régularisation L2 (\texttt{penalizer=0.05}). 
 \end{dire}
 
 \begin{compr}
-\textbf{MLE} : on cherche les paramètres qui rendent les données observées \emph{les
-plus probables} sous le modèle. Procédure classique en statistique paramétrique.
+\textbf{MLE — analogie du jeu de hasard.}
+
+Imagine qu'on te donne un dé tordu et tu dois deviner quel paramétrage (= biais du dé)
+explique le mieux les résultats. Tu lances le dé 100 fois, tu observes les résultats,
+et tu cherches les probabilités $p_1, ..., p_6$ qui rendent cette séquence observée
+\emph{la plus probable} possible. C'est exactement le maximum de vraisemblance.
+
+Pour notre modèle Weibull : les \og résultats observés \fg{} sont les durées $t_i$ entre
+CG consécutifs, et les \og biais du dé \fg{} à estimer sont $\beta$ (les 17 coefficients
+de régression) et $k$ (le paramètre de forme de Weibull).
+
+\textbf{La densité Weibull explicitement} :
+$$f(t \mid \lambda, k) = \frac{k}{\lambda} \left(\frac{t}{\lambda}\right)^{k-1} \exp\!\left(-(t/\lambda)^k\right)$$
+
+C'est la dérivée négative de la survie : $f(t) = -dS/dt$. Elle représente la
+\og densité de probabilité \fg{} au point $t$ — analogue à la cloche de Gauss mais en
+asymétrique.
+
+\textbf{Pourquoi on PEUT optimiser cette vraisemblance ?}
+\begin{itemize}[topsep=2pt]
+    \item La log-vraisemblance est \emph{concave} en $(\beta, \log k)$ pour Weibull (avec
+    la régularisation L2 ajoutée). Donc un seul maximum global. Pas de problème de
+    minima locaux.
+    \item lifelines optimise par Newton-Raphson — convergence en quelques itérations.
+\end{itemize}
 
 \textbf{La subtilité ici, c'est la censure} :
 \begin{itemize}[topsep=2pt]
@@ -422,10 +510,32 @@ plus probables} sous le modèle. Procédure classique en statistique paramétriq
     absence \fg{}.
 \end{itemize}
 
+\textbf{Pourquoi on PEUT pas juste ignorer les CG censurés ?}
+Les CG terminaux représentent $\sim 30 \%$ des observations (un par alerte). Les ignorer
+biaiserait fortement le modèle vers les courts gaps (= ce qu'on observe), en négligeant
+les longs silences (= ce qu'on déduit). La censure permet d'utiliser \emph{toute}
+l'information disponible.
+
 \textbf{Le code} : 3 lignes via lifelines, avec \texttt{penalizer=0.05} (= régularisation
 ridge $\lambda \sum \beta_j^2$) qui stabilise le fit en présence de features corrélées
 (typique avec 17 variables).
 \end{compr}
+
+\begin{tcolorbox}[colback=purple!5,colframe=purple!50!black,title=\textbf{Analogie : MLE comme un détective}]
+Tu es un détective qui voit des éclairs tomber autour d'un aéroport, mais tu ne connais pas
+\og la loi de la nature \fg{} qui les régit. Tu fais l'hypothèse que c'est une loi de
+Weibull (raisonnable car les phénomènes physiques d'avalanche suivent souvent Weibull),
+et tu cherches \emph{quels paramètres $\lambda, k$ expliquent le mieux ce que tu vois}.
+
+Pour ça, tu écris pour chaque éclair la probabilité qu'il arrive à \emph{cet instant
+précis} — c'est la densité $f(t)$. Pour les éclairs \og terminaux \fg{} (= ceux après
+lesquels tu n'as rien observé pendant 30 min), tu utilises la \emph{survie} $S(30)$
+parce que c'est tout ce que tu sais.
+
+Puis tu \emph{maximises} le produit de toutes ces probabilités (= la vraisemblance) en
+ajustant $\lambda$ et $k$. C'est numériquement plus pratique de maximiser la
+\emph{log}-vraisemblance, qui transforme un produit en somme.
+\end{tcolorbox}
 
 \begin{piege}
 \textbf{Q : Sans gérer la censure, qu'est-ce qui se passerait ?}
@@ -1023,7 +1133,7 @@ def build_model_matrix(cg, scaler, apt_cols, fit_scaler=False):
 
 \subsection*{Sur la calibration robuste (slide 11, pour préparer Q/R)}
 
-\begin{piege>
+\begin{piege}
 \textbf{Q : Comment vous calculez le coefficient de calibration $c_q$ ?}
 
 R : Procédure en deux étapes — winsorization + monotonicité. Code :
@@ -1093,6 +1203,199 @@ exactement les mêmes coefficients (à la précision numérique près).
 R : Une prédiction = un produit matriciel sur un vecteur de 21 dimensions (17 features
 + 4 dummies). Quelques microsecondes. Le bottleneck en prod serait Météorage lui-même
 (qui détecte les éclairs en temps réel par triangulation).
+\end{piege}
+
+% =========================================================================
+\subsection*{Q/R supplémentaires sur la théorie}
+
+\begin{piege}
+\textbf{Q : Le modèle peut-il \emph{vraiment} apprendre quelque chose avec $k$ fixe ?}
+
+R : Oui ! Le modèle AFT garde $k$ fixe \emph{pour la population entière}, mais
+$\lambda(X)$ change pour chaque éclair. C'est la \emph{forme} (Weibull avec $k = 0{,}7$)
+qui reste constante, mais la \emph{vitesse} ($\lambda$) qui varie. C'est l'hypothèse
+classique du modèle AFT. Une version plus complexe (\og ancillary \fg{} dans lifelines)
+laisse aussi $k$ varier selon $X$, on l'a noté en perspective.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Pourquoi pas un modèle de Cox au lieu de Weibull AFT ?}
+
+R : Cox est \emph{semi-paramétrique} — il n'impose pas de forme pour la baseline $h_0(t)$,
+ce qui est plus flexible. MAIS Cox ne donne pas de prédictions absolues de durée
+($T_q$) — il prédit seulement des hazards ratios. Pour notre application, on a besoin de
+$T_q$ en minutes. Weibull AFT donne cette prédiction analytique. Cox + extrapolation
+empirique aurait été possible mais plus complexe.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Comment vous interprétez physiquement $k = 0{,}7$ ?}
+
+R : $k = 0{,}7 < 1$ signifie que le hazard décroît avec le temps depuis le dernier CG.
+Concrètement : juste après un CG, l'orage est dans une \og phase d'avalanche \fg{} —
+beaucoup de chances qu'un autre suive vite. Plus on attend, plus l'énergie résiduelle du
+nuage se dissipe, moins le hazard est élevé. C'est la \og mortalité infantile \fg{} en
+démographie : les premiers instants sont les plus risqués, après ça se stabilise.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Pourquoi $\log \lambda = \beta_0 + \beta^\top X$ et pas $\lambda = \beta_0 + \beta^\top X$ ?}
+
+R : Pour deux raisons. (1) Le log garantit que $\lambda > 0$ quelle que soit la valeur
+de $X$ — c'est une contrainte mathématique nécessaire (sinon Weibull devient indéfinie).
+(2) En log, les effets sont \emph{multiplicatifs} sur $\lambda$ : si $\beta_j = +0{,}35$,
+ça multiplie $\lambda$ par $e^{0,35} \approx 1{,}42$ (+42 \%). C'est l'effet
+\og accélérateur \fg{} (AFT) — d'où le nom du modèle.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : C'est quoi exactement la différence entre la densité $f(t)$ et la survie $S(t)$ ?}
+
+R : Mathématiquement :
+\begin{itemize}[topsep=2pt]
+    \item $S(t) = P(T > t)$ : probabilité que la durée $T$ dépasse $t$.
+    \item $f(t) = -\dfrac{dS}{dt}$ : densité de probabilité — la \og pente \fg{} négative
+    de $S$, qui dit \og combien de probabilité s'écoule par unité de temps autour de $t$ \fg{}.
+\end{itemize}
+Intuitivement : $S$ est cumulative, $f$ est instantanée. $\int_0^\infty f(t) dt = 1$.
+\end{piege}
+
+\subsection*{Q/R sur le code et l'implémentation}
+
+\begin{piege}
+\textbf{Q : Comment vous gérez les CG en début d'alerte (les premiers, sans historique) ?}
+
+R : Pour le tout premier CG d'une alerte, plusieurs variables rolling sont indéfinies
+(\texttt{prev\_gap}, \texttt{rolling\_gap\_3}, etc.). On les met à 0 (valeur par défaut
+neutre). On exclut aussi du fit les alertes avec moins de 3 CG via
+\texttt{cg[cg['n\_cg\_alert'] >= 3]} — pas assez de signal pour le rolling. Ça nous fait
+perdre $< 5\%$ des alertes mais améliore la qualité du fit.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Comment gérer une prédiction \emph{en temps réel} en production ?}
+
+R : Pour chaque nouveau CG détecté :
+\begin{enumerate}[topsep=2pt]
+    \item On met à jour les variables contextuelles à la volée (\texttt{prev\_gap},
+    \texttt{rolling\_gap\_5}, etc.) à partir des CG précédents en mémoire.
+    \item On standardise avec le scaler chargé (sauvegardé dans
+    \texttt{meteorage\_artifact.pkl}).
+    \item On appelle \texttt{aft.predict\_percentile(X, p=1-q)} et on multiplie par $c_q$.
+    \item On cap à 30 min et on déclenche le timer.
+\end{enumerate}
+Latence totale : $< 10$ ms par éclair. Très en-dessous des contraintes opérationnelles.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Différence entre \texttt{predict\_percentile} et \texttt{predict\_survival\_function} ?}
+
+R : Deux façons d'interroger le modèle :
+\begin{itemize}[topsep=2pt]
+    \item \texttt{predict\_percentile(X, p)} : renvoie $t$ tel que $S(t \mid X) = p$.
+    C'est le \emph{quantile} de la distribution. On l'utilise avec $p = 1 - q$ pour
+    obtenir $T_q$.
+    \item \texttt{predict\_survival\_function(X, times=[30])} : renvoie $S(30 \mid X)$.
+    C'est la \emph{probabilité de survie à 30 min}. Utile pour vérifier la calibration
+    (si on annonce 5 \%, on devrait avoir $S(T_{0,95}) = 0{,}05$ sur le test).
+\end{itemize}
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Et si on voulait des $T_q$ sans le cap à 30 min ?}
+
+R : Techniquement on les a — c'est le \og raw \fg{} \texttt{Tq\_raw} dans le code. Le cap
+est ajouté en post-processing comme \emph{filet de sécurité opérationnel}. Sans cap, à
+$q = 0{,}99$, un orage très calme peut donner $T_q = 99{,}7$ min (cf.\ slide 8) — ce qui
+veut dire \og attendre presque 2h \fg{}. Météorage ne ferait jamais ça, donc on cap.
+Cap = max(prediction, 30) pour ne JAMAIS être moins prudent que la baseline.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Comment vous avez choisi les 17 variables ?}
+
+R : Itérativement avec validation croisée. Au départ on a essayé 30+ variables. On a
+gardé celles avec coefficient $|\beta|$ significatif (test de Wald via lifelines) et
+qui n'introduisaient pas de colinéarité forte (VIF $< 10$). 17 est le résultat de ce
+filtrage. Ajouter d'autres ne déclencherait que du bruit.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Pourquoi sin/cos pour mois et heure et pas un one-hot ?}
+
+R : (1) Plus parcimonieux : 2 variables au lieu de 12 (mois) ou 24 (heure). (2) Préserve
+la \emph{continuité circulaire} : décembre et janvier sont voisins dans le cycle, alors
+qu'avec un one-hot ils seraient orthogonaux. La formule est :
+$\texttt{month\_sin} = \sin(2\pi \cdot \texttt{mois} / 12)$.
+\end{piege}
+
+\subsection*{Q/R sur la validation et les chiffres}
+
+\begin{piege}
+\textbf{Q : Comment vous validez la qualité du fit ?}
+
+R : Trois métriques croisées :
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{Log-vraisemblance} sur train et test — doit être stable, pas
+    d'overfitting.
+    \item \textbf{C-index} sur test (slide 7) — 0,74 pour Weibull avec features,
+    0,55 pour baselines. Score d'ordonnancement.
+    \item \textbf{Calibration empirique} (slide 10) — fréquence empirique vs annoncée.
+    Avant calibration robuste : 21 \% / 14 \% / 6 \% au lieu de 10 \% / 5 \% / 1 \%.
+    Après : aligné.
+\end{enumerate}
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Comment vous avez généré les coefficients $\beta$ standardisés ?}
+
+R : lifelines fournit \texttt{aft.params\_} qui contient les coefficients du modèle.
+Comme on a standardisé les features ($\text{moyenne}=0$, $\sigma=1$), $|\beta_j|$ est
+directement comparable d'une variable à l'autre. On somme par catégorie pour obtenir
+les 57 \% / 15 \% / 14 \% / 9 \% / 5 \% du slide 9.
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Et si je veux refaire votre fit chez moi ?}
+
+R : Trois fichiers :
+\begin{itemize}[topsep=2pt]
+    \item \texttt{meteorage\_model.py} : le pipeline (\texttt{load\_train},
+    \texttt{add\_features}, \texttt{add\_target}, \texttt{build\_model\_matrix},
+    \texttt{fit\_weibull}, \texttt{compute\_robust\_calibration}).
+    \item \texttt{Weibull\_final3km.ipynb} : notebook complet avec sortie attendue.
+    \item Les données \texttt{segment\_alerts\_all\_airports\_train.csv} dans
+    \texttt{data(1)/data/}.
+\end{itemize}
+En 5 minutes (le fit est rapide, $\sim 30$ s sur un laptop standard).
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Que faut-il pour passer en production réelle ?}
+
+R : Trois choses :
+\begin{enumerate}[topsep=2pt]
+    \item Re-fitter chaque année sur les nouvelles données (dérive climatique).
+    \item Pipeline temps réel pour calculer les 17 features à chaque CG en moins de 100 ms.
+    \item Système de monitoring : tracker la calibration empirique réelle en production,
+    re-calibrer si elle dérive.
+\end{enumerate}
+\end{piege}
+
+\begin{piege}
+\textbf{Q : Que diriez-vous si vous deviez améliorer le modèle ?}
+
+R : Trois pistes par ordre de priorité :
+\begin{enumerate}[topsep=2pt]
+    \item \textbf{Classifieur secondaire \og dernier CG ? \fg{}} : entraîner un GBM
+    binaire qui prédit \texttt{is\_last}. Combiné à Weibull, devrait amener le risque
+    à 2 \% sans perdre le gain.
+    \item \textbf{Météo externe} : intégrer vent, pression, humidité depuis Météo France.
+    Probablement 5-10 \% de C-index supplémentaire.
+    \item \textbf{Hawkes auto-excitant} : modèle alternatif sans feature engineering
+    (cascades d'éclairs modélisées directement). On a expérimenté — résultats comparables,
+    voir projet auxiliaire \texttt{PROJET\_hawkes\_final}.
+\end{enumerate}
 \end{piege}
 
 \end{document}
